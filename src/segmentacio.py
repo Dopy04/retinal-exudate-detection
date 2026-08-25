@@ -8,16 +8,12 @@ Created on Tue Aug 25 17:02:02 2026
 """Bloc 4: segmentacio basica.
 
 Aqui fem els primers metodes simples per detectar possibles exsudats.
-Aquests metodes ens serviran com a baseline, o sigui, com a comparacio
+Aquests metodes ens serviran com a base, o sigui, com a comparació
 amb el metode final que farem despres.
 
-Entrada:
-    un canal de la imatge, per exemple G, B, gris o HSV_V
+Rebem com a entrada un canal de la imatge (RGB,gris,HSV_V) i obtenim a la sortida
+una mascara binaria on el True és un possible exsudat i el False es el fons
 
-Sortida:
-    una mascara binaria
-    True  = possible exsudat
-    False = fons
 """
 
 import numpy as np
@@ -27,12 +23,11 @@ from sklearn.cluster import KMeans
 
 def aplicar_mascara_retina(mascara,mascara_retina):
     """
-    Aquesta funcio serveix per quedar-nos nomes amb la zona de la retina.
-
-    La part negra de fora de la retina no ens interessa.
-    Si no posem aquesta mascara, alguns metodes poden detectar coses al fons.
+    Aquesta funció fa una mica de preprocessament ja que ens permet només quedarnos
+    amb la zona de la retina que és la que ens interresa. Si per un cas no usem
+    aquesta mascara es detectarien coses en el fons i no tindriem una segmentació correcte
     """
-
+    
     if mascara_retina is None:
         return mascara
 
@@ -44,14 +39,12 @@ def aplicar_mascara_retina(mascara,mascara_retina):
 def segmentar_otsu(canal,mascara_retina=None):
     """
     Segmentacio amb Otsu.
-
-    Otsu calcula automaticament un llindar global.
-    Com que els exsudats son zones brillants, ens quedem amb els pixels
-    que estan per sobre del llindar.
-
-    Problema:
-        Si la imatge te il.luminacio desigual, Otsu pot marcar massa zones
-        o pot perdre exsudats petits.
+    Aquesta funció ens calcula en base al algoritme OTSU, un algoritme de segmentació
+    basada en un llindar global. En el nostre cas com els exsudats són zones brillants ens
+    quedem amb els pixels per sobre del llindar.
+    
+    Aquest metode ens donara errors o problemes en cas de exsudats petits o zones 
+    amb una iluminació no uniforme
     """
 
     # Si tenim mascara de retina, calculem el llindar nomes dins la retina
@@ -64,7 +57,9 @@ def segmentar_otsu(canal,mascara_retina=None):
     # Els exsudats son brillants, per aixo fem canal>llindar
     mascara=canal>llindar
 
-    # Eliminem el fons exterior si tenim mascara de retina
+    # Eliminem el fons exterior si tenim mascara de retina per quedarnos només
+    #amb les zona de la retina
+    
     mascara=aplicar_mascara_retina(mascara,mascara_retina)
 
     return mascara
@@ -73,13 +68,12 @@ def segmentar_otsu(canal,mascara_retina=None):
 def segmentar_llindar_fix(canal,llindar=0.7,mascara_retina=None):
     """
     Segmentacio amb un llindar fix.
-
-    Aquest metode es molt simple:
-        si el pixel es mes gran que el llindar -> possible exsudat
-
-    No esperem que sigui el millor metode, pero ens serveix com a comparacio.
+    
+    Aquest metode té un funcionament molt simple, sempre que algun pixel superi
+    el llindar el classfiquem com un possible exsudat. No obtindrem la mascara 
+    més acurada pero ens permet fer una bona comparació.
     """
-
+    
     mascara=canal>llindar
 
     mascara=aplicar_mascara_retina(mascara,mascara_retina)
