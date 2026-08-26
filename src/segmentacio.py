@@ -85,10 +85,9 @@ def segmentar_adaptatiu(canal,mascara_retina=None,mida_bloc=51,offset=0):
     """
     Segmentacio amb threshold adaptatiu/local.
 
-    En comptes de buscar un unic llindar per tota la imatge,
-    calcula un llindar diferent segons la zona local.
-
-    Aixo te sentit en imatges de retina perque la il.luminacio no es uniforme.
+    En aquest cas busquem calcular un llindar per cada zona per no fer una 
+    generalització i així podem millorar la detecció de exsudats en zones
+    amb iluminació no uniforme.
     """
 
     # El block size ha de ser senar. Si ens passen un valor parell, el corregim.
@@ -97,7 +96,9 @@ def segmentar_adaptatiu(canal,mascara_retina=None,mida_bloc=51,offset=0):
 
     llindar_local=filters.threshold_local(canal,block_size=mida_bloc,offset=offset)
 
-    # Exsudats brillants -> pixels per sobre del llindar local
+    #Els pixels per sobre del llindar local seràn els exudats perquè són els que 
+    #més brillen
+    
     mascara=canal>llindar_local
 
     mascara=aplicar_mascara_retina(mascara,mascara_retina)
@@ -109,10 +110,9 @@ def segmentar_sauvola(canal,mascara_retina=None,mida_finestra=51):
     """
     Segmentacio amb Sauvola.
 
-    Sauvola tambe es un threshold local.
-    Es una opcio semblant a Niblack/NICK, per tant es coherent amb el paper.
-
-    La idea es provar si aquest metode local funciona millor que Otsu.
+    Sauvola és un tipus de algoritme de segmentació que funciona com un llindar local
+    , és un metode com el OTSU per amb un llindar local, i l'utilitzem per veure si funciona
+    millor que l'OTSU.
     """
 
     if mida_finestra%2==0:
@@ -134,19 +134,19 @@ def segmentar_kmeans_canal(canal,mascara_retina=None,n_clusters=3):
     K-means separa els pixels en grups segons la intensitat.
     Com que els exsudats son brillants, ens quedem amb el cluster
     que tingui el centre mes alt.
-
-    Exemple:
-        cluster fosc     -> fons / vasos
-        cluster mig      -> retina normal
-        cluster brillant -> possibles exsudats
+    
+    Els K-means ens permetran separar els clusters fosc en fons, el cluster mig
+    en retina normal i el cluster brillant en un possible exsudat.
+    
     """
 
     alcada,amplada=canal.shape
 
     # Preparem les dades per K-means.
-    # K-means necessita una matriu de forma:
-    # files = pixels
-    # columnes = caracteristiques
+    #Els K-means necessiten una matriu on les files siguin els pixels i
+    #les columnes les caracteristiques.
+
+
     if mascara_retina is not None:
         dades=canal[mascara_retina].reshape(-1,1)
     else:
@@ -177,10 +177,10 @@ def segmentar_kmeans_canal(canal,mascara_retina=None,n_clusters=3):
 
 def obtenir_mascares_baseline(canal,mascara_retina=None):
     """
-    Aquesta funcio executa tots els metodes basics de cop.
+    Aquesta funcio executa totes les funcions anterios.
 
-    Retorna un diccionari amb totes les mascares.
-    Aixo despres ho podrem passar directament al bloc de metriques.
+    Retorna un diccionari amb totes les mascares, que ens servira per 
+    passar-ho directament a les metriques.
     """
 
     mascara_otsu=segmentar_otsu(canal,mascara_retina)
@@ -200,7 +200,7 @@ def obtenir_mascares_baseline(canal,mascara_retina=None):
     return mascares
 
 
-if __name__=="__main__":
+"""if __name__=="__main__":     ESTO NO SIRVE ERA PA PROBAR ALGO
 
     # Prova petita artificial per veure si el fitxer funciona.
     # En el projecte real, el canal vindra de preprocessing.py.
