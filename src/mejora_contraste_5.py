@@ -5,9 +5,6 @@ Objectiu:
     - Aplicar equalitzacio d'histograma i CLAHE a canals 2D.
     - Aplicar una versio de KMMRC basada en el paper de 2022.
     - Deixar canals millorats preparats per al bloc de segmentacio.
-
-Aquest fitxer no segmenta exsudats i no calcula metriques.
-Aixo es fara en blocs posteriors amb les mascares resultants.
 """
 
 import numpy as np
@@ -23,33 +20,35 @@ from scipy.ndimage import uniform_filter
 # 1. Funcions auxiliars per aplicar contrast nomes dins la retina
 # -------------------------------------------------------------------------
 
-def prepara_canal_contrast(canal, mascara_retina):
+def prepara_canal(canal, mascara_retina):
     """
     Prepara un canal abans d'aplicar contrast.
 
     Fora de la retina no deixem zeros, perque el fons negre podria afectar
-    l'equalitzacio. Posem la mediana dels pixels que estan dins la retina.
+    l'equalitzacio. Posem la mitjana dels pixels que estan dins la retina.
     """
     canal_preparat = np.copy(canal).astype(np.float64)
 
     valor_fons = np.median(canal_preparat[mascara_retina])
     canal_preparat[~mascara_retina] = valor_fons
-
-    return np.clip(canal_preparat, 0.0, 1.0)
+    
+    canal_preparat = np.clip(canal_preparat, 0.0, 1.0)
+    
+    return canal_preparat
 
 
 # -------------------------------------------------------------------------
 # 2. Equalitzacio i CLAHE
 # -------------------------------------------------------------------------
 
-def equalitza_histograma_canal(canal, mascara_retina):
+def equalitza_histograma(canal, mascara_retina):
     """
     Aplica equalitzacio global d'histograma a un canal.
 
     Es una prova senzilla per comparar amb CLAHE. Despres tornem a posar
     el fons exterior de la retina a zero.
     """
-    canal_preparat = prepara_canal_contrast(canal, mascara_retina)
+    canal_preparat = prepara_canal(canal, mascara_retina)
 
     canal_eq = equalize_hist(canal_preparat, mask=mascara_retina)
     canal_eq[~mascara_retina] = 0
@@ -58,14 +57,14 @@ def equalitza_histograma_canal(canal, mascara_retina):
 
 
 
-def aplica_clahe_canal(canal, mascara_retina, clip_limit=0.01):
+def aplica_clahe(canal, mascara_retina, clip_limit=0.01):
     """
     Aplica CLAHE a un canal 2D.
 
     CLAHE millora el contrast de forma local, i per a imatges de retina
     pot ajudar quan la il·luminacio no es uniforme.
     """
-    canal_preparat = prepara_canal_contrast(canal, mascara_retina)
+    canal_preparat = prepara_canal(canal, mascara_retina)
 
     canal_clahe = equalize_adapthist(
         canal_preparat,
@@ -105,12 +104,16 @@ def aplica_kmmrc(imatge_retina, mascara_retina, k=5, beta=1.5):
     v_nou = np.zeros_like(v)
 
     # Apliquem K-means nomes als pixels de dins de la retina.
+    
     valors_v = v[mascara_retina].reshape(-1, 1)
+    #El -1 significa: calcula automáticament quantes files necessitem.
+    #El 1 significa: una sola característica per píxel.
 
     model = KMeans(n_clusters=k, random_state=0, n_init=10)
     etiquetes = model.fit_predict(valors_v)
 
     valors_v = valors_v.ravel()
+    #Tornem a posar valors_v com un vector 1D.
     valors_v_nous = np.copy(valors_v)
 
     for i in range(k):
@@ -140,22 +143,6 @@ def aplica_kmmrc(imatge_retina, mascara_retina, k=5, beta=1.5):
 
     return v_nou, np.clip(imatge_kmmrc, 0.0, 1.0)
 
-
-# -------------------------------------------------------------------------
-# 4. Filtre suau opcional
-# -------------------------------------------------------------------------
-
-def aplica_filtre_mitjana(canal, mascara_retina, mida=3):
-    """
-    Aplica un filtre de mitjana per suavitzar soroll.
-
-    Pot ser util despres de KMMRC o CLAHE si apareixen artefactes petits.
-    """
-    canal_preparat = prepara_canal_contrast(canal, mascara_retina)
-    canal_filtrat = uniform_filter(canal_preparat, size=mida)
-    canal_filtrat[~mascara_retina] = 0
-
-    return np.clip(canal_filtrat, 0.0, 1.0)
 
 
 # -------------------------------------------------------------------------
@@ -194,29 +181,19 @@ def millora_contrast(imatge_retina, mascara_retina, canals):
     luma = canals[3]
     v = canals[6]
 
-    luma_eq = equalitza_histograma_canal(luma, mascara_retina)
-    luma_clahe = aplica_clahe_canal(luma, mascara_retina)
+    luma_eq = equalitza_histograma(luma, mascara_retina)
+    luma_clahe = aplica_clahe(luma, mascara_retina)
 
-    g_clahe = aplica_clahe_canal(g, mascara_retina)
-    b_clahe = aplica_clahe_canal(b, mascara_retina)
-    v_clahe = aplica_clahe_canal(v, mascara_retina)
+    g_clahe = aplica_clahe(g, mascara_retina)
+    b_clahe = aplica_clahe(b, mascara_retina)
+    v_clahe = aplica_clahe(v, mascara_retina)
 
     v_kmmrc, imatge_kmmrc = aplica_kmmrc(imatge_retina, mascara_retina)
 
-    v_kmmrc_clahe = aplica_clahe_canal(v_kmmrc, mascara_retina)
-    v_kmmrc_clahe_filtrat = aplica_filtre_mitjana(v_kmmrc_clahe, mascara_retina)
+    v_kmmrc_clahe = aplica_clahe(v_kmmrc, mascara_retina)
 
-    return (
-        luma_eq,
-        luma_clahe,
-        g_clahe,
-        b_clahe,
-        v_clahe,
-        v_kmmrc,
-        v_kmmrc_clahe,
-        v_kmmrc_clahe_filtrat,
-        imatge_kmmrc,
-    )
+
+    return (luma_eq, luma_clahe, g_clahe, b_clahe, v_clahe, v_kmmrc, v_kmmrc_clahe, imatge_kmmrc)
 
 
 # -------------------------------------------------------------------------
