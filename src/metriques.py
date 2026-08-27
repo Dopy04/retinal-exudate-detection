@@ -60,7 +60,6 @@ def binaritzar_mascara(mascara):
 def calcular_confusio(mascara_predita,mascara_gt):
     """
     Calculem TP, FP, FN i TN comparant pixel a pixel.
-
     TP: prediccio=exsudat i ground truth=exsudat
     FP: prediccio=exsudat pero ground truth=fons
     FN: prediccio=fons pero ground truth=exsudat
