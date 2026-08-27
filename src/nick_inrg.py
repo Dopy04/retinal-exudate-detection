@@ -8,12 +8,13 @@ Created on Wed Aug 26 23:42:52 2026
 """
 NICK i INRG per la segmentacio d'exsudats.
 
-NICK calcula un llindar local per cada pixel.
-INRG aplica NICK diverses vegades per intentar completar
-les regions candidates.
+Amb el algoritme NICK calculem un llindar local  per cada pixel i
+posteriorment el INRG aplica NICK divereses interacions fins que no hi ha
+hagui un canvi notable
 
-Com que els exsudats son brillants, primer invertim el canal
-per convertir-los en regions fosques.
+El NICK estava fet en principi per les hemorragies pero aplicant una inversió
+de canal podem detectar exsudats, ja que aquests són brillants i per aquest
+metode volem que siguin regions fosques.
 """
 
 import numpy as np
@@ -22,17 +23,10 @@ from scipy.ndimage import uniform_filter
 
 def invertir_canal(canal):
     """
+    Invertim la intensitat del canal suposant que el canal esta normalitzat
+    entre 0 o 1, amb això els exsudats passen a ser foscos
     Invertim la intensitat del canal.
-
-    Treballem suposant que el canal esta normalitzat entre 0 i 1.
-
-    Exemple:
-        pixel brillant=0.9
-        pixel invertit=1-0.9=0.1
-
-    Per tant els exsudats, que son brillants, passen a ser foscos.
     """
-
     canal_invertit=1-canal
 
     return canal_invertit
@@ -41,19 +35,12 @@ def invertir_canal(canal):
 def segmentar_nick(canal,mascara_retina=None,mida_finestra=95,k=-0.2):
     """
     Fem una segmentacio amb NICK thresholding.
-
-    NICK calcula un llindar diferent per cada zona de la imatge,
-    utilitzant la mitjana i la variacio local.
-
-    canal:
-        canal invertit on els exsudats son foscos
-
-    mida_finestra:
-        mida de la zona local que mirem per calcular el llindar
-
-    k:
-        parametre del metode NICK
-        al paper s'utilitza aproximadament k=-0.2
+    
+    NICK calcula un llindar diferent per cada  area de la imatge 
+    utilitzant la mitjana i la variació local de pixels. Utilizem el 
+    canal invertit en aquesta funció i definim la mida de la finestra que
+    és la zona local que mirem per calcular el llindar i  k que és el parametre 
+    del  metode NICK(-0,2 al paper)
     """
 
     # Calculem la mitjana local de cada zona
@@ -91,19 +78,11 @@ def segmentar_inrg(canal,mascara_retina=None,mida_finestra=95,k=-0.2,
                    iteracions=3,delta=0.1):
     """
     Apliquem INRG.
+    
+    El INRG és metode que utilitza el NICK, el seu funcionament es basa en
+    invertie el canal i aplicar el NICK, cada cop que l'apliquem el NICK modifica la intensitat
+    de la regió detectada i torna a aplicar NICK, repeteix el procés fins que la regió no canvia.
 
-    La idea es:
-        1. invertim el canal
-        2. fem NICK
-        3. modifiquem la intensitat de la regio detectada
-        4. tornem a aplicar NICK
-        5. parem si la regio gairebe ja no creix
-
-    iteracions:
-        nombre maxim de vegades que repetirem el metode
-
-    delta:
-        canvi minim de l'area per continuar iterant
     """
 
     # Primer invertim el canal perquè els exsudats siguin foscos
