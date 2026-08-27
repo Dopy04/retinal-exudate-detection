@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from skimage.io import imread
 from skimage.color import rgb2gray, rgb2hsv, rgb2lab
 from skimage.morphology import remove_small_objects, remove_small_holes, binary_closing, disk
-
+from skimage.transform import resize
 
 # -------------------------------------------------------------------------
 # 1. Carrega d'imatges
@@ -184,8 +184,11 @@ def preprocessa_imatge(ruta_imatge, ruta_mascara):
     mascara_gt = carrega_mascara_gt(ruta_mascara)
 
     if imatge.shape[:2] != mascara_gt.shape:
-        print("Atenció: la imatge i la màscara no tenen la mateixa mida.")
 
+        imatge = resize(imatge, (mascara_gt.shape[0], mascara_gt.shape[1], 3), preserve_range=True, anti_aliasing=True)
+        # Redimensionem la imatge al tamany de la màscara Groundtruth
+        imatge = np.clip(imatge, 0.0, 1.0)
+        
     mascara_retina = crea_mascara_retina(imatge)
     imatge_retina = aplica_mascara_retina(imatge, mascara_retina)
     canals = extreu_canals(imatge_retina)
@@ -239,20 +242,23 @@ def visualitza_preprocessament(imatge, mascara_gt, mascara_retina, canals):
 
     plt.tight_layout()
     plt.show()
+    
+"""Prova de redimensió imatge DR2019
+
+ruta_imatge = Path("../data_samples/Exudate_DR2019_001.jpg")
+ruta_mascara = Path("../data_samples/Exudate_DR2019_001_Groundtruth.jpg")
 
 
-# -------------------------------------------------------------------------
-# Exemple d'ús en el main
-# -------------------------------------------------------------------------
-# ruta_imatge = Path("Exudate-JSIEC/001.jpg")
-# ruta_mascara = Path("Exudate-JSIEC-Groundtruth/001.jpg")
-#
-# resultat = preprocessa_imatge(ruta_imatge, ruta_mascara)
-#
-# imatge = resultat[0]
-# mascara_gt = resultat[1]
-# mascara_retina = resultat[2]
-# imatge_retina = resultat[3]
-# canals = resultat[4]
-#
-# visualitza_preprocessament(imatge, mascara_gt, mascara_retina, canals)
+resultat = preprocessa_imatge(ruta_imatge, ruta_mascara)
+
+imatge = resultat[0]
+mascara_gt = resultat[1]
+mascara_retina = resultat[2]
+imatge_retina = resultat[3]
+canals = resultat[4]
+
+if imatge.shape[:2] == mascara_gt.shape:
+    print("TRue",imatge.shape, mascara_gt.shape)
+     
+visualitza_preprocessament(imatge, mascara_gt, mascara_retina, canals)
+"""
