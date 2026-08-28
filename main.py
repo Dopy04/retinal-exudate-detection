@@ -6,11 +6,12 @@ Created on Fri Aug 21 17:56:30 2026
 """
 
 import numpy as np
+import matplotlib.pyplot as plt
 from pathlib import Path
 
-from src.metriques import calcular_metriques,imprimir_metriques
+from src.metriques import calcular_metriques,imprimir_metriques,comparar_metodes
 from src.preprocessament_3 import preprocessa_imatge,visualitza_preprocessament
-
+from src.segmentacio import obtenir_mascares_baseline
 
 # BLOC 2 - METRIQUES
 
@@ -86,3 +87,113 @@ for nom_imatge,nom_gt in imatges:
         mascara_retina,
         canals
     )
+    
+# ============================================================
+# BLOC 4 - SEGMENTACIO BASELINE
+# ============================================================
+
+print("\n==============================")
+print("BLOC 4 - SEGMENTACIO BASELINE")
+print("==============================")
+
+
+for nom_imatge,nom_gt in imatges:
+
+    print("\n----------------------------------")
+    print("PROVA BLOC 4:",nom_imatge)
+    print("----------------------------------")
+
+    ruta_imatge=ruta_dades/nom_imatge
+    ruta_gt=ruta_dades/nom_gt
+
+    # Tornem a fer el preprocessament per obtenir
+    # els canals i la mascara de retina
+    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
+        ruta_imatge,ruta_gt
+    )
+
+    # Utilitzem el canal G
+    canal_g=canals[1]
+
+    # Executem tots els metodes de segmentacio baseline
+    mascares=obtenir_mascares_baseline(
+        canal_g,
+        mascara_retina
+    )
+
+    # Comparem totes les mascares amb el Ground Truth
+    resultats=comparar_metodes(
+        mascares,
+        mascara_gt
+    )
+
+    # Mostrem les metriques de cada metode
+    for nom_metode in resultats:
+
+        imprimir_metriques(
+            nom_metode,
+            resultats[nom_metode]
+        )
+
+
+    # --------------------------------------------------------
+    # VISUALITZACIO
+    # --------------------------------------------------------
+
+    plt.figure(figsize=(14,8))
+
+    plt.suptitle(
+        "PROVA BLOC 4 - "+nom_imatge+" - Canal G",
+        fontsize=16
+    )
+
+    # Imatge original
+    plt.subplot(2,4,1)
+    plt.imshow(imatge)
+    plt.title("Original")
+    plt.axis("off")
+
+    # Canal G
+    plt.subplot(2,4,2)
+    plt.imshow(canal_g,cmap="gray")
+    plt.title("Canal G")
+    plt.axis("off")
+
+    # Ground Truth
+    plt.subplot(2,4,3)
+    plt.imshow(mascara_gt,cmap="gray")
+    plt.title("Ground Truth")
+    plt.axis("off")
+
+    # Otsu
+    plt.subplot(2,4,4)
+    plt.imshow(mascares["Otsu"],cmap="gray")
+    plt.title("Otsu")
+    plt.axis("off")
+
+    # Llindar fix
+    plt.subplot(2,4,5)
+    plt.imshow(mascares["Llindar_fix"],cmap="gray")
+    plt.title("Llindar fix")
+    plt.axis("off")
+
+    # Adaptatiu
+    plt.subplot(2,4,6)
+    plt.imshow(mascares["Adaptatiu"],cmap="gray")
+    plt.title("Adaptatiu")
+    plt.axis("off")
+
+    # Sauvola
+    plt.subplot(2,4,7)
+    plt.imshow(mascares["Sauvola"],cmap="gray")
+    plt.title("Sauvola")
+    plt.axis("off")
+
+    # K-means
+    plt.subplot(2,4,8)
+    plt.imshow(mascares["Kmeans"],cmap="gray")
+    plt.title("K-means")
+    plt.axis("off")
+
+    plt.tight_layout(rect=[0,0,1,0.95])
+    plt.show()
