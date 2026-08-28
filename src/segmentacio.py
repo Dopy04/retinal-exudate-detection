@@ -226,3 +226,4 @@ def obtenir_mascares_baseline(canal,mascara_retina=None):
     for nom in mascares:
         print("\nMetode:",nom)
         print(mascares[nom].astype(int))
+"""

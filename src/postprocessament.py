@@ -23,7 +23,7 @@ def eliminar_objectes_petits(mascara,mida_minima=50):
     """
     mascara=mascara.astype(bool)
 
-    mascara_neta=morphology.remove_small_objects(mascara,min_size=mida_minim)
+    mascara_neta=morphology.remove_small_objects(mascara,min_size=mida_minima)
 
     return mascara_neta
 
