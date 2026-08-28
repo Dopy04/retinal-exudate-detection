@@ -163,43 +163,65 @@ for nom_canal, canal_segmentacio in llista_canals:
 
     plt.figure(figsize=(16, 8))
 
+    # 1) Canal sobre el qual estem aplicant els mètodes
     plt.subplot(2, 4, 1)
-    plt.imshow(mascara_gt, cmap="gray")
-    plt.title("Ground truth")
+    plt.imshow(canal_segmentacio, cmap="gray")
+    plt.title("Canal: " + nom_canal)
     plt.axis("off")
 
+    # 2) Otsu
     plt.subplot(2, 4, 2)
-    plt.imshow(mascares_finals["Otsu"], cmap="gray")
+    
+    plt.imshow(mascara_gt, cmap="gray", alpha=1)
+    plt.imshow(mascares_finals["Otsu"], cmap="Greens", alpha=0.5)
     plt.title("Otsu")
     plt.axis("off")
 
+    # 3) Llindar fix
     plt.subplot(2, 4, 3)
-    plt.imshow(mascares_finals["Llindar_fix"], cmap="gray")
+    
+    plt.imshow(mascara_gt, cmap="gray", alpha=1)
+    plt.imshow(mascares_finals["Llindar_fix"], cmap="Greens", alpha=0.5)
     plt.title("Llindar fix")
     plt.axis("off")
 
+    # 4) Adaptatiu
     plt.subplot(2, 4, 4)
-    plt.imshow(mascares_finals["Adaptatiu"], cmap="gray")
+    
+    plt.imshow(mascara_gt, cmap="gray", alpha=1)
+    plt.imshow(mascares_finals["Adaptatiu"], cmap="Greens", alpha=0.5)
     plt.title("Adaptatiu")
     plt.axis("off")
 
+    # 5) Sauvola
     plt.subplot(2, 4, 5)
-    plt.imshow(mascares_finals["Sauvola"], cmap="gray")
+    
+    plt.imshow(mascara_gt, cmap="gray", alpha=1)
+    plt.imshow(mascares_finals["Sauvola"], cmap="Greens", alpha=0.5)
     plt.title("Sauvola")
     plt.axis("off")
 
+    # 6) K-means
     plt.subplot(2, 4, 6)
-    plt.imshow(mascares_finals["Kmeans"], cmap="gray")
+    
+    plt.imshow(mascara_gt, cmap="gray", alpha=1)
+    plt.imshow(mascares_finals["Kmeans"], cmap="Greens", alpha=0.5)
     plt.title("K-means")
     plt.axis("off")
 
+    # 7) NICK
     plt.subplot(2, 4, 7)
-    plt.imshow(mascares_finals["NICK"], cmap="gray")
+    
+    plt.imshow(mascara_gt, cmap="gray", alpha=1)
+    plt.imshow(mascares_finals["NICK"], cmap="Greens", alpha=0.5)
     plt.title("NICK")
     plt.axis("off")
 
+    # 8) INRG
     plt.subplot(2, 4, 8)
-    plt.imshow(mascares_finals["INRG"], cmap="gray")
+    
+    plt.imshow(mascara_gt, cmap="gray", alpha=1)
+    plt.imshow(mascares_finals["INRG"], cmap="Greens", alpha=0.5)
     plt.title("INRG")
     plt.axis("off")
 
