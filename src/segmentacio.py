@@ -81,7 +81,7 @@ def segmentar_llindar_fix(canal,llindar=0.7,mascara_retina=None):
     return mascara
 
 
-def segmentar_adaptatiu(canal,mascara_retina=None,mida_bloc=51,offset=0):
+def segmentar_adaptatiu(canal,mascara_retina=None,mida_bloc=101,offset=-0.15):
     """
     Segmentacio amb threshold adaptatiu/local.
 
@@ -106,7 +106,7 @@ def segmentar_adaptatiu(canal,mascara_retina=None,mida_bloc=51,offset=0):
     return mascara
 
 
-def segmentar_sauvola(canal,mascara_retina=None,mida_finestra=51):
+def segmentar_sauvola(canal,mascara_retina=None,mida_finestra=51, k=0.2):
     """
     Segmentacio amb Sauvola.
 
@@ -118,7 +118,7 @@ def segmentar_sauvola(canal,mascara_retina=None,mida_finestra=51):
     if mida_finestra%2==0:
         mida_finestra=mida_finestra+1
 
-    llindar=filters.threshold_sauvola(canal,window_size=mida_finestra)
+    llindar=filters.threshold_sauvola(canal,window_size=mida_finestra,k=k)
 
     mascara=canal>llindar
 

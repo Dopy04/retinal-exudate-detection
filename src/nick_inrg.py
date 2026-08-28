@@ -32,7 +32,7 @@ def invertir_canal(canal):
     return canal_invertit
 
 
-def segmentar_nick(canal,mascara_retina=None,mida_finestra=95,k=-0.2):
+def segmentar_nick(canal,mascara_retina=None,mida_finestra=95,k=-0.10):
     """
     Fem una segmentacio amb NICK thresholding.
     
@@ -78,46 +78,62 @@ def segmentar_inrg(canal,mascara_retina=None,mida_finestra=95,k=-0.2,
                    iteracions=3,delta=0.1):
     """
     Apliquem INRG.
-    
-    El INRG és metode que utilitza el NICK, el seu funcionament es basa en
-    invertie el canal i aplicar el NICK, cada cop que l'apliquem el NICK modifica la intensitat
-    de la regió detectada i torna a aplicar NICK, repeteix el procés fins que la regió no canvia.
 
+    El metode comença amb una mascara NICK inicial.
+    Despres modifica la intensitat de les regions detectades
+    i torna a aplicar NICK.
+
+    Les noves regions es van acumulant amb les regions
+    detectades anteriorment.
     """
 
-    # Primer invertim el canal perquè els exsudats siguin foscos
+    # Invertim el canal perquè els exsudats siguin foscos
     imatge=1-canal
 
-    # Al principi encara no tenim cap regio detectada
-    mascara_anterior=np.zeros(canal.shape,dtype=bool)
+    # Primera segmentacio NICK
+    mascara=segmentar_nick(
+        imatge,
+        mascara_retina,
+        mida_finestra,
+        k
+    )
 
-    for i in range(iteracions):
-
-        # Fem NICK sobre la imatge actual
-        mascara=segmentar_nick(imatge,mascara_retina,mida_finestra,k)
-
-        # Calculem l'area detectada abans i ara
-        area_anterior=np.sum(mascara_anterior)
-        area_actual=np.sum(mascara)
-
-        # A partir de la segona iteracio podem mirar quant ha canviat
-        if area_anterior>0:
-
-            creixement=abs(area_actual-area_anterior)/area_anterior
-
-            # Si la regio canvia menys que delta, parem
-            if creixement<delta:
-                break
-
-        # Si hem detectat pixels, calculem la seva intensitat mitjana
-        if area_actual>0:
-
-            valor_mitja=np.mean(imatge[mascara])
-
-            # Substituim els pixels detectats per aquest valor mitja
-            # i tornarem a aplicar NICK en la seguent iteracio
-            imatge[mascara]=valor_mitja
+    # A partir de la segona iteracio
+    for i in range(1,iteracions):
 
         mascara_anterior=mascara.copy()
+
+        area_anterior=np.sum(mascara_anterior)
+
+        # Si no hi ha cap regio, no podem continuar
+        if area_anterior==0:
+            break
+
+        # Intensitat mitjana de la regio detectada
+        valor_mitja=np.mean(
+            imatge[mascara_anterior]
+        )
+
+        # Substituim la regio per la seva intensitat mitjana
+        imatge[mascara_anterior]=valor_mitja
+
+        # Tornem a aplicar NICK
+        mascara_nova=segmentar_nick(
+            imatge,
+            mascara_retina,
+            mida_finestra,
+            k
+        )
+
+        # INRG acumula la regio anterior i la nova
+        mascara=mascara_anterior | mascara_nova
+
+        area_actual=np.sum(mascara)
+
+        creixement=(area_actual-area_anterior)/area_anterior
+
+        # Si la regio creix menys que delta, parem
+        if creixement<delta:
+            break
 
     return mascara
