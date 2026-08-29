@@ -1,48 +1,34 @@
-# -*- coding: utf-8 -*-
 """
-Created on Fri Aug 28 21:00:06 2026
-
-@author: pablo
-"""
-
-
-"""
-Bloc 10 - Extraccio de caracteristiques de blobs.
+Bloc 10 - Extraccio de features de blobs.
 
 Aquest bloc agafa una mascara candidata d'exsudats i calcula
-features de cada regio blanca de la mascara.
+caracteristiques de cada blob.
 
-La idea es preparar una taula per al bloc 11, on podrem entrenar
-un classificador amb SVM.
+Cada blob sera una fila de la taula.
 
-Entrada principal:
-    - canals del preprocessament
-    - canal usat per segmentar
-    - mascara candidata final
-    - mascara ground truth
+La ground truth nomes s'utilitza per posar l'etiqueta:
+    1  -> exsudat
+    0  -> fals positiu
+   -1  -> ambigu
 
-Sortida:
-    - una taula on cada fila es un blob
 """
 
 import numpy as np
 import pandas as pd
 
 from skimage.measure import label, regionprops
+from skimage.color import rgb2ycbcr
 
 
 # -------------------------------------------------------------------------
-# 1. Funcions auxiliars
+# 1. Funcions petites
 # -------------------------------------------------------------------------
 
 def calcula_circularitat(area, perimetre):
     """
-    Calcula la circularitat d'un blob.
-
-    circularitat = 4*pi*area / perimetre^2
-
-    Si el perimetre es zero, retornem zero per evitar errors.
+    Calcula si el blob es mes o menys circular.
     """
+
     if perimetre == 0:
         return 0
 
@@ -51,45 +37,81 @@ def calcula_circularitat(area, perimetre):
     return circularitat
 
 
-def calcula_mitjana(canal, mascara_blob):
+def calcula_ratio_eixos(eix_major, eix_menor):
     """
-    Calcula la mitjana d'un canal dins d'un blob.
+    Calcula la relacio entre l'eix major i l'eix menor.
     """
-    valors = canal[mascara_blob]
-
-    if len(valors) == 0:
+    
+    #Evitem dividir entre 0
+    if eix_menor == 0:
         return 0
 
-    mitjana = np.mean(valors)
+    ratio = eix_major / eix_menor
+
+    return ratio
+
+
+def mitjana_top25(canal, mascara_blob):
+    """
+    Calcula la mitjana del 25% de pixels mes intensos del blob.
+    """
+
+    valors = canal[mascara_blob]
+
+    q75 = np.percentile(valors, 75)
+    valors_alts = valors[valors >= q75]
+
+    mitjana = np.mean(valors_alts)
 
     return mitjana
 
 
-def calcula_desviacio(canal, mascara_blob):
+def calcula_y(imatge):
     """
-    Calcula la desviacio estandard d'un canal dins d'un blob.
+    Calcula el canal Y de YCbCr i el normalitza a [0, 1].
     """
-    valors = canal[mascara_blob]
 
-    if len(valors) == 0:
-        return 0
+    ycbcr = rgb2ycbcr(imatge)
 
-    desviacio = np.std(valors)
+    y = ycbcr[:, :, 0]
 
-    return desviacio
+    # En skimage, Y queda aproximadament entre 16 i 235, per normalitzar:
+    y = (y - 16) / 219
+    y = np.clip(y, 0.0, 1.0)
+
+    return y
 
 
-def calcula_solapament_gt(mascara_blob, mascara_gt):
+def normalitza_l(l_lab):
     """
-    Calcula quin percentatge del blob cau dins de la ground truth.
-
-    solapament = area(blob i GT) / area(blob)
+    Normalitza el canal L de Lab, que sol estar entre 0 i 100.
     """
+
+    l_norm = l_lab / 100
+    l_norm = np.clip(l_norm, 0.0, 1.0)
+
+    return l_norm
+
+
+def normalitza_bstar(b_lab):
+    """
+    Normalitza b* procedent del canal Lab.
+
+    b* pot ser negatiu, per això el desplacem a valors positius.
+    """
+
+    bstar = (b_lab + 128) / 255
+    bstar = np.clip(bstar, 0.0, 1.0)
+
+    return bstar
+
+
+def calcula_solapament(mascara_blob, mascara_gt):
+    """
+    Calcula quina part del blob coincideix amb la Groundtruth.
+    """
+
     area_blob = np.sum(mascara_blob)
-
-    if area_blob == 0:
-        return 0
-
     area_solapament = np.sum(mascara_blob & mascara_gt)
 
     solapament = area_solapament / area_blob
@@ -97,17 +119,19 @@ def calcula_solapament_gt(mascara_blob, mascara_gt):
     return solapament
 
 
-def etiqueta_blob(solapament, llindar_solapament=0.3):
+def calcula_etiqueta(solapament, llindar_positiu=0.30, llindar_negatiu=0.05):
     """
-    Etiqueta un blob segons el seu solapament amb la ground truth.
+    Dona una etiqueta al blob segons el solapament amb la Groundtruth.
+    """
 
-    etiqueta = 1  -> exsudat real
-    etiqueta = 0  -> fals positiu
-    """
-    if solapament >= llindar_solapament:
+    if solapament >= llindar_positiu:
         etiqueta = 1
-    else:
+
+    elif solapament <= llindar_negatiu:
         etiqueta = 0
+
+    else:
+        etiqueta = -1
 
     return etiqueta
 
@@ -120,74 +144,99 @@ def extreu_features_blob(
     regio,
     etiquetes,
     canals,
-    canal_segmentacio,
+    y,
+    l_norm,
+    bstar,
     mascara_gt,
     nom_imatge,
     nom_canal,
     nom_metode,
-    llindar_solapament=0.3,
+    llindar_positiu=0.30,
+    llindar_negatiu=0.05,
 ):
     """
-    Extreu les features d'una regio connectada.
-
-    regio ve de regionprops.
-    etiquetes es la imatge etiquetada amb label().
+    Extreu les features d'un sol blob.
     """
 
+    # Seleccionem nomes els pixels del blob actual.
     mascara_blob = etiquetes == regio.label
 
-    # Canals del preprocessament
-    r = canals[0]
+    # Canals que venen del preprocessament.
     g = canals[1]
     b = canals[2]
-    luma = canals[3]
-    h = canals[4]
-    s = canals[5]
-    v = canals[6]
+    gray = canals[3]
 
-    # Features de forma
+ 
+    # Calculem tots els parametres de forma:
+
+
     area = regio.area
     perimetre = regio.perimeter
-    circularitat = calcula_circularitat(area, perimetre)
 
-    eccentricitat = regio.eccentricity
+    circularitat = calcula_circularitat(
+        area,
+        perimetre,
+    )
+
     solidesa = regio.solidity
+    eccentricitat = regio.eccentricity
     extent = regio.extent
 
-    centroid_y = regio.centroid[0]
-    centroid_x = regio.centroid[1]
+    eix_major = regio.major_axis_length
+    eix_minor = regio.minor_axis_length
 
-    min_row, min_col, max_row, max_col = regio.bbox
-    bbox_alt = max_row - min_row
-    bbox_ample = max_col - min_col
+    ratio_eixos = calcula_ratio_eixos(
+        eix_major,
+        eix_minor,
+    )
 
-    # Features de color i intensitat
-    mean_r = calcula_mitjana(r, mascara_blob)
-    mean_g = calcula_mitjana(g, mascara_blob)
-    mean_b = calcula_mitjana(b, mascara_blob)
 
-    mean_luma = calcula_mitjana(luma, mascara_blob)
-    mean_h = calcula_mitjana(h, mascara_blob)
-    mean_s = calcula_mitjana(s, mascara_blob)
-    mean_v = calcula_mitjana(v, mascara_blob)
+    #Calculem tots els paramteres de color i intensitat:
 
-    std_luma = calcula_desviacio(luma, mascara_blob)
-    std_v = calcula_desviacio(v, mascara_blob)
 
-    # Tambe guardem la intensitat del canal concret amb el qual hem segmentat.
-    # Aixi podem comparar V, V CLAHE, V KMMRC, etc.
-    mean_canal_segmentacio = calcula_mitjana(canal_segmentacio, mascara_blob)
-    std_canal_segmentacio = calcula_desviacio(canal_segmentacio, mascara_blob)
+    mean_g = np.mean(g[mascara_blob])
+    std_g = np.std(g[mascara_blob])
 
-    # Solapament amb ground truth
-    solapament_gt = calcula_solapament_gt(
+    mean_b = np.mean(b[mascara_blob])
+    std_b = np.std(b[mascara_blob])
+
+    mean_y = np.mean(y[mascara_blob])
+    std_y = np.std(y[mascara_blob])
+
+    mean_gray = np.mean(gray[mascara_blob])
+    std_gray = np.std(gray[mascara_blob])
+
+    mean_l = np.mean(l_norm[mascara_blob])
+    std_l = np.std(l_norm[mascara_blob])
+
+    mean_bstar = np.mean(bstar[mascara_blob])
+    std_bstar = np.std(bstar[mascara_blob])
+
+
+    # Percentils dins del blob:
+
+
+    q25_g = np.percentile(g[mascara_blob], 25)
+    q75_g = np.percentile(g[mascara_blob], 75)
+    top25_g = mitjana_top25(g, mascara_blob)
+
+    q25_b = np.percentile(b[mascara_blob], 25)
+    q75_b = np.percentile(b[mascara_blob], 75)
+    top25_b = mitjana_top25(b, mascara_blob)
+
+    # -------------------------
+    # Etiqueta amb ground truth
+    # -------------------------
+
+    solapament = calcula_solapament(
         mascara_blob,
         mascara_gt,
     )
 
-    etiqueta = etiqueta_blob(
-        solapament_gt,
-        llindar_solapament,
+    etiqueta = calcula_etiqueta(
+        solapament,
+        llindar_positiu,
+        llindar_negatiu,
     )
 
     fila = [
@@ -199,30 +248,34 @@ def extreu_features_blob(
         area,
         perimetre,
         circularitat,
-        eccentricitat,
         solidesa,
+        eccentricitat,
         extent,
+        eix_major,
+        eix_minor,
+        ratio_eixos,
 
-        centroid_y,
-        centroid_x,
-        bbox_alt,
-        bbox_ample,
-
-        mean_r,
         mean_g,
+        std_g,
         mean_b,
-        mean_luma,
-        mean_h,
-        mean_s,
-        mean_v,
+        std_b,
+        mean_y,
+        std_y,
+        mean_gray,
+        std_gray,
+        mean_l,
+        std_l,
+        mean_bstar,
+        std_bstar,
 
-        std_luma,
-        std_v,
+        q25_g,
+        q75_g,
+        top25_g,
+        q25_b,
+        q75_b,
+        top25_b,
 
-        mean_canal_segmentacio,
-        std_canal_segmentacio,
-
-        solapament_gt,
+        solapament,
         etiqueta,
     ]
 
@@ -230,36 +283,49 @@ def extreu_features_blob(
 
 
 # -------------------------------------------------------------------------
-# 3. Taula de features
+# 3. Funcio principal del bloc 10
 # -------------------------------------------------------------------------
 
 def crea_taula_features(
+    imatge,
     canals,
-    canal_segmentacio,
     mascara_candidats,
     mascara_gt,
     nom_imatge="",
     nom_canal="",
     nom_metode="",
-    llindar_solapament=0.3,
+    llindar_positiu=0.30,
+    llindar_negatiu=0.05,
 ):
     """
-    Crea una taula de features a partir d'una mascara candidata.
+    Crea una taula de features.
 
-    Cada regio blanca separada de la mascara es considera un blob.
+    Cada component connectada de la mascara candidata es un blob.
     """
 
     mascara_candidats = mascara_candidats.astype(bool)
     mascara_gt = mascara_gt.astype(bool)
 
-    if mascara_candidats.shape != mascara_gt.shape:
-        raise ValueError("La mascara candidata i la ground truth no tenen la mateixa mida.")
+   
+    # Canals que utilitzarem per les features.
+    # Les features es calculen sobre la imatge original/preprocessada,
+    # no sobre KMMRC ni CLAHE.
+    l_lab = canals[7]
+    b_lab = canals[9]
 
-    if canal_segmentacio.shape != mascara_candidats.shape:
-        raise ValueError("El canal de segmentacio i la mascara no tenen la mateixa mida.")
+    y = calcula_y(imatge)
+    l_norm = normalitza_l(l_lab)
+    bstar = normalitza_bstar(b_lab)
 
-    # Separem els blobs de la mascara.
-    etiquetes = label(mascara_candidats)
+    # Convertim la mascara binaria en components connectades.
+    # connectivity=2 vol dir que les diagonals tambe compten com connexio.
+    #(Connectivity = 1 només comptaria dalt baix esquerra i dreta com connexions)
+    
+    etiquetes = label(
+        mascara_candidats,
+        connectivity=2,
+    )
+
     regions = regionprops(etiquetes)
 
     columnes = [
@@ -271,28 +337,32 @@ def crea_taula_features(
         "area",
         "perimetre",
         "circularitat",
-        "eccentricitat",
         "solidesa",
+        "eccentricitat",
         "extent",
+        "eix_major",
+        "eix_minor",
+        "ratio_eixos",
 
-        "centroid_y",
-        "centroid_x",
-        "bbox_alt",
-        "bbox_ample",
-
-        "mean_r",
         "mean_g",
+        "std_g",
         "mean_b",
-        "mean_luma",
-        "mean_h",
-        "mean_s",
-        "mean_v",
+        "std_b",
+        "mean_y",
+        "std_y",
+        "mean_gray",
+        "std_gray",
+        "mean_l",
+        "std_l",
+        "mean_bstar",
+        "std_bstar",
 
-        "std_luma",
-        "std_v",
-
-        "mean_canal_segmentacio",
-        "std_canal_segmentacio",
+        "q25_g",
+        "q75_g",
+        "top25_g",
+        "q25_b",
+        "q75_b",
+        "top25_b",
 
         "solapament_gt",
         "etiqueta",
@@ -306,12 +376,15 @@ def crea_taula_features(
             regio,
             etiquetes,
             canals,
-            canal_segmentacio,
+            y,
+            l_norm,
+            bstar,
             mascara_gt,
             nom_imatge,
             nom_canal,
             nom_metode,
-            llindar_solapament,
+            llindar_positiu,
+            llindar_negatiu,
         )
 
         files.append(fila)
@@ -325,12 +398,12 @@ def crea_taula_features(
 
 
 # -------------------------------------------------------------------------
-# 4. Resum de la taula
+# 4. Resum
 # -------------------------------------------------------------------------
 
 def imprimeix_resum_features(taula, nom=""):
     """
-    Imprimeix un resum simple de la taula de features.
+    Imprimeix un resum curt de les features.
     """
 
     print("\n====================================")
@@ -342,25 +415,20 @@ def imprimeix_resum_features(taula, nom=""):
     if len(taula) == 0:
         return
 
-    n_exsudats = np.sum(taula["etiqueta"] == 1)
-    n_falsos = np.sum(taula["etiqueta"] == 0)
-
-    print("Blobs exsudat real:", n_exsudats)
-    print("Blobs fals positiu:", n_falsos)
+    print("Positius:", np.sum(taula["etiqueta"] == 1))
+    print("Negatius:", np.sum(taula["etiqueta"] == 0))
+    print("Ambigus:", np.sum(taula["etiqueta"] == -1))
 
     print("Area mitjana:", round(np.mean(taula["area"]), 3))
-    print("Solapament GT mitja:", round(np.mean(taula["solapament_gt"]), 3))
-    print("Mean V mitja:", round(np.mean(taula["mean_v"]), 3))
-    print("Mean canal segmentacio:", round(np.mean(taula["mean_canal_segmentacio"]), 3))
+    print("Solapament mitja:", round(np.mean(taula["solapament_gt"]), 3))
+    print("Mean G mitja:", round(np.mean(taula["mean_g"]), 3))
+    print("Mean B mitja:", round(np.mean(taula["mean_b"]), 3))
 
 
 def ajunta_taules(llista_taules):
     """
-    Junta diferents taules de features en una sola taula.
+    Junta diferents taules de features.
     """
-
-    if len(llista_taules) == 0:
-        return pd.DataFrame()
 
     taula_total = pd.concat(
         llista_taules,
@@ -368,3 +436,51 @@ def ajunta_taules(llista_taules):
     )
 
     return taula_total
+
+
+def columnes_svm():
+    """
+    Columnes que podrem usar com X en el bloc 11.
+
+    No posem:
+        - nom_imatge
+        - nom_canal
+        - nom_metode
+        - blob_id
+        - solapament_gt
+        - etiqueta
+    """
+
+    columnes = [
+        "area",
+        "perimetre",
+        "circularitat",
+        "solidesa",
+        "eccentricitat",
+        "extent",
+        "eix_major",
+        "eix_minor",
+        "ratio_eixos",
+
+        "mean_g",
+        "std_g",
+        "mean_b",
+        "std_b",
+        "mean_y",
+        "std_y",
+        "mean_gray",
+        "std_gray",
+        "mean_l",
+        "std_l",
+        "mean_bstar",
+        "std_bstar",
+
+        "q25_g",
+        "q75_g",
+        "top25_g",
+        "q25_b",
+        "q75_b",
+        "top25_b",
+    ]
+
+    return columnes
