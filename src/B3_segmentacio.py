@@ -1,4 +1,4 @@
-# -- coding: utf-8 --
+# -*- coding: utf-8 -*-
 """
 Created on Tue Aug 25 17:02:02 2026
 
@@ -6,7 +6,7 @@ Created on Tue Aug 25 17:02:02 2026
 """
 
 """
-Bloc 4:Segmentacio basica.
+Bloc 3: Segmentacio basica.
 
 Aqui fem els primers metodes simples per detectar possibles exsudats,
 aquests metodes ens serviran com a base, o sigui, com a comparació
@@ -21,6 +21,7 @@ from skimage import filters
 from sklearn.cluster import KMeans
 from pathlib import Path
 import matplotlib.pyplot as plt
+
 
 def aplicar_mascara_retina(mascara,mascara_retina):
     """
@@ -56,9 +57,8 @@ def preparar_canal_local(canal,mascara_retina):
 
     Fora de la retina tenim pixels negres i aquests podrien afectar
     el calcul del llindar en zones properes al contorn. Per evitar-ho
-    substituim temporalment el fons exterior per la mitjana
+    substituim temporalment el fons exterior per la mediana
     dels pixels que estan dins de la retina.
-    
     """
 
     canal_preparat=np.copy(canal).astype(np.float64)
@@ -77,7 +77,7 @@ def preparar_canal_local(canal,mascara_retina):
     if valors.size==0:
         return canal_preparat
 
-    #Utilitzem la mitjana perquè és menys sensible a zones molt brillants
+    #Utilitzem la mediana perquè és menys sensible a zones molt brillants
     valor_fons=np.median(valors)
 
     canal_preparat[~mascara_retina]=valor_fons
@@ -176,8 +176,8 @@ def segmentar_adaptatiu(canal,mascara_retina=None,mida_bloc=101,offset=-0.15):
         mida_bloc=3
 
     #Calculem un llindar local per cada zona de la imatge
-    llindar_local=filters.threshold_local(canal_preparat,
-                                          block_size=mida_bloc,offset=offset)
+    llindar_local=filters.threshold_local(
+        canal_preparat,block_size=mida_bloc,offset=offset)
 
     #Els pixels més brillants que el seu llindar local seran possibles exsudats
     mascara=canal_preparat>llindar_local
@@ -197,7 +197,7 @@ def segmentar_sauvola(canal,mascara_retina=None,mida_finestra=51,k=0.2):
     """
 
     canal_preparat=preparar_canal_local(canal,mascara_retina)
-    
+
     #La finestra ha de ser senar
     if mida_finestra%2==0:
         mida_finestra=mida_finestra+1
@@ -210,6 +210,7 @@ def segmentar_sauvola(canal,mascara_retina=None,mida_finestra=51,k=0.2):
 
     mida_finestra=min(mida_finestra,mida_max)
 
+    #Evitem utilitzar una finestra massa petita
     if mida_finestra<3:
         mida_finestra=3
 
@@ -239,9 +240,10 @@ def segmentar_kmeans_canal(canal,mascara_retina=None,n_clusters=3):
 
     alcada,amplada=canal.shape
 
-    # K-means necessita una matriu on cada fila sigui un pixel
-    # i cada columna una caracteristica,en aquest cas només la intensitat
+    #K-means necessita una matriu on cada fila sigui un pixel
+    #i cada columna una caracteristica,en aquest cas només la intensitat
     if mascara_retina is not None:
+
         if canal.shape!=mascara_retina.shape:
             raise ValueError(
                 "El canal i la mascara de retina no tenen la mateixa mida")
@@ -270,13 +272,13 @@ def segmentar_kmeans_canal(canal,mascara_retina=None,n_clusters=3):
 
     etiquetes=model.fit_predict(dades)
 
-    # Cada centre representa la intensitat mitjana d'un cluster
+    #Cada centre representa la intensitat mitjana d'un cluster
     centres=model.cluster_centers_.ravel()
 
-    # Seleccionem el cluster amb el centre més brillant
+    #Seleccionem el cluster amb el centre més brillant
     cluster_brilant=np.argmax(centres)
 
-    # Reconstruim la mascara amb la mida de la imatge original
+    #Reconstruim la mascara amb la mida de la imatge original
     mascara=np.zeros((alcada,amplada),dtype=bool)
 
     if mascara_retina is not None:
@@ -298,19 +300,20 @@ def obtenir_mascares_baseline(canal,mascara_retina=None):
     directament al bloc de metriques i comparar els resultats.
     """
 
-    # Apliquem tots els metodes sobre exactament la mateixa entrada
+    #Apliquem tots els metodes sobre exactament la mateixa entrada
     mascara_otsu=segmentar_otsu(canal,mascara_retina)
 
-    mascara_fix=segmentar_llindar_fix(canal,llindar=0.7,
-        mascara_retina=mascara_retina)
+    mascara_fix=segmentar_llindar_fix(
+        canal,llindar=0.7,mascara_retina=mascara_retina)
 
     mascara_adaptativa=segmentar_adaptatiu(canal,mascara_retina)
 
     mascara_sauvola=segmentar_sauvola(canal,mascara_retina)
 
-    mascara_kmeans=segmentar_kmeans_canal(canal,mascara_retina,n_clusters=3)
+    mascara_kmeans=segmentar_kmeans_canal(
+        canal,mascara_retina,n_clusters=3)
 
-    # Guardem cada mascara amb el nom del metode que l'ha generat
+    #Guardem cada mascara amb el nom del metode que l'ha generat
     mascares={
         "Otsu":mascara_otsu,
         "Llindar_fix":mascara_fix,
@@ -320,61 +323,54 @@ def obtenir_mascares_baseline(canal,mascara_retina=None):
 
     return mascares
 
-<<<<<<< HEAD
+
 if __name__=="__main__":
-=======
-if _name=="main_":
->>>>>>> ba58486a2f353d2425ba5e733cb031187a06020e
 
-    # Prova Bloc 4: utilitzem una de les imatges del dataset per comprovar
-    # visualment els diferents metodes de segmentacio i les seves metriques
+    #Prova Bloc 3: utilitzem una de les imatges del dataset per comprovar
+    #visualment els diferents metodes de segmentacio i les seves metriques
 
-    from src import preprocessament_3 as prep
-    from src.metriques import comparar_metodes,imprimir_metriques
+    import B2_preprocessament as prep
+    from B1_metriques import comparar_metodes,imprimir_metriques
 
-    # Imatge que volem utilitzar per la prova.
-    # Per provar una altra imatge només cal canviar aquests dos noms.
+    #Imatge que volem utilitzar per la prova
+    #Per provar una altra imatge només cal canviar aquests dos noms
     nom_imatge="Exudate_DR2019_003.jpg"
     nom_gt="Exudate_DR2019_003_Groundtruth.jpg"
 
-    # Busquem automaticament la carpeta del projecte i les imatges
-<<<<<<< HEAD
+    #Busquem automaticament la carpeta del projecte i les imatges
     ruta_projecte=Path(__file__).resolve().parent.parent
-=======
-    ruta_projecte=Path(_file_).resolve().parent.parent
->>>>>>> ba58486a2f353d2425ba5e733cb031187a06020e
     ruta_dades=ruta_projecte/"data_samples"
 
     ruta_imatge=ruta_dades/nom_imatge
     ruta_gt=ruta_dades/nom_gt
 
-    # Fem el preprocessament per obtenir la imatge, el Ground Truth,
-    # la mascara de retina i els diferents canals
+    #Fem el preprocessament per obtenir la imatge,el Ground Truth,
+    #la mascara de retina i els diferents canals
     imatge,mascara_gt,mascara_retina,imatge_retina,canals=prep.preprocessa_imatge(
         ruta_imatge,ruta_gt)
 
-    # Utilitzem el canal G perquè és el que ens ha donat millors
-    # resultats per la segmentacio basica
+    #Utilitzem el canal G perquè és el que ens ha donat millors
+    #resultats per la segmentacio basica
     canal_g=canals[1]
 
-    # Apliquem tots els metodes del Bloc 4 sobre la mateixa imatge
+    #Apliquem tots els metodes del Bloc 3 sobre la mateixa imatge
     mascares=obtenir_mascares_baseline(canal_g,mascara_retina)
 
-    # Calculem i mostrem les metriques de cada metode
+    #Calculem i mostrem les metriques de cada metode
     resultats=comparar_metodes(mascares,mascara_gt)
 
     print("\n======================================")
-    print("PROVA BLOC 4")
+    print("PROVA BLOC 3")
     print("Imatge:",nom_imatge)
     print("======================================")
 
     for nom_metode in resultats:
         imprimir_metriques(nom_metode,resultats[nom_metode])
 
-    # Mostrem la imatge original, el Ground Truth i el resultat
-    # dels diferents metodes de segmentacio
+    #Mostrem la imatge original,el Ground Truth i el resultat
+    #dels diferents metodes de segmentacio
     plt.figure(figsize=(16,8))
-    plt.suptitle("PROVA BLOC 4 - "+nom_imatge,fontsize=16)
+    plt.suptitle("PROVA BLOC 3 - "+nom_imatge,fontsize=16)
 
     plt.subplot(2,4,1)
     plt.imshow(imatge)
@@ -413,6 +409,3 @@ if _name=="main_":
 
     plt.tight_layout(rect=[0,0,1,0.94])
     plt.show()
-    
-    
-"Contribució IA"
