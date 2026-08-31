@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -- coding: utf-8 --
 """
 Created on Tue Aug 25 17:02:02 2026
 
@@ -320,7 +320,11 @@ def obtenir_mascares_baseline(canal,mascara_retina=None):
 
     return mascares
 
+<<<<<<< HEAD
 if __name__=="__main__":
+=======
+if _name=="main_":
+>>>>>>> ba58486a2f353d2425ba5e733cb031187a06020e
 
     # Prova Bloc 4: utilitzem una de les imatges del dataset per comprovar
     # visualment els diferents metodes de segmentacio i les seves metriques
@@ -334,7 +338,11 @@ if __name__=="__main__":
     nom_gt="Exudate_DR2019_003_Groundtruth.jpg"
 
     # Busquem automaticament la carpeta del projecte i les imatges
+<<<<<<< HEAD
     ruta_projecte=Path(__file__).resolve().parent.parent
+=======
+    ruta_projecte=Path(_file_).resolve().parent.parent
+>>>>>>> ba58486a2f353d2425ba5e733cb031187a06020e
     ruta_dades=ruta_projecte/"data_samples"
 
     ruta_imatge=ruta_dades/nom_imatge
