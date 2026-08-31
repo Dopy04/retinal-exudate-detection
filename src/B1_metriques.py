@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Bloc 2: metriques per avaluar la segmentacio d'exsudats.
+Bloc 1:Metriques per avaluar la segmentacio d'exsudats.
 
 En aquest bloc comparem la mascara que obtenim amb els nostres algoritmes
 amb el Ground Truth, que és la mascara correcte feta pels experts.
