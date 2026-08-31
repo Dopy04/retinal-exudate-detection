@@ -1,123 +1,335 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Aug 21 2026
+Metriques per avaluar la segmentacio d'exsudats.
 
-@author: gurpi
+Comparem la mascara predita amb el Ground Truth:
 
-Fitxer de metriques per comparar la mascara que dona el nostre algoritme
-amb el ground truth dels experts.
+    True  = exsudat
+    False = fons
 
-1=True  -> exsudat
-0=False -> fons
+Les metriques principals seran:
+    - Precision
+    - Recall
+    - Dice
+    - IoU
+
+També calculem F1 i Accuracy com a informacio complementaria.
 """
 
 import numpy as np
 
-eps=1e-8
 
+# -------------------------------------------------------------------------
+# 1. CONVERTIR IMATGES A MASCARES BINARIES
+# -------------------------------------------------------------------------
 
 def passar_a_gris(imatge):
     """
-    Si la imatge ve en RGB, la passem a gris amb la formula de luma.
-    Si ja ve en gris, la deixem igual.
+    Si la imatge te tres canals, la passem a escala de grisos
+    utilitzant la formula de luminancia.
+
+    Si ja es una imatge 2D, la deixem igual.
     """
 
-    if imatge.ndim==3:
-        R=imatge[:,:,0]
-        G=imatge[:,:,1]
-        B=imatge[:,:,2]
+    imatge = np.asarray(imatge)
 
-        imatge_gris=0.299*R+0.587*G+0.114*B
+    if imatge.ndim == 3:
+
+        r = imatge[:, :, 0]
+        g = imatge[:, :, 1]
+        b = imatge[:, :, 2]
+
+        imatge_gris = (
+            0.299*r
+            + 0.587*g
+            + 0.114*b
+        )
 
     else:
-        imatge_gris=imatge
+
+        imatge_gris = imatge
 
     return imatge_gris
 
 
 def binaritzar_mascara(mascara):
     """
-    Passem una mascara a binaria.
+    Converteix una mascara a tipus boolea.
 
-    Els ground truth poden venir en RGB, gris, 0-255 o 0-1.
-    Nosaltres volem una mascara booleana:
-        True=exsudat
-        False=fons
+    Admet:
+        - mascares booleanes
+        - imatges entre 0 i 1
+        - imatges entre 0 i 255
+        - mascares RGB
+
+    Retorna:
+        True  = exsudat
+        False = fons
     """
 
-    mascara=passar_a_gris(mascara)
+    mascara = passar_a_gris(
+        mascara
+    )
 
-    if np.max(mascara)>1:
-        llindar=128
+
+    # Si ja es booleana no cal aplicar cap llindar.
+    if mascara.dtype == bool:
+
+        return mascara
+
+
+    mascara = mascara.astype(
+        np.float64
+    )
+
+
+    # Detectem automaticament l'escala.
+    if np.max(mascara) > 1:
+
+        llindar = 128
+
     else:
-        llindar=0.5
 
-    mascara_binaria=mascara>llindar
+        llindar = 0.5
+
+
+    mascara_binaria = (
+        mascara > llindar
+    )
 
     return mascara_binaria
 
 
-def calcular_confusio(mascara_predita,mascara_gt):
+# -------------------------------------------------------------------------
+# 2. DIVISIO SEGURA
+# -------------------------------------------------------------------------
+
+def divisio_segura(
+    numerador,
+    denominador
+):
     """
-    Calculem TP, FP, FN i TN comparant pixel a pixel.
-    TP: prediccio=exsudat i ground truth=exsudat
-    FP: prediccio=exsudat pero ground truth=fons
-    FN: prediccio=fons pero ground truth=exsudat
-    TN: prediccio=fons i ground truth=fons
-    """
+    Evita divisions entre zero.
 
-    pred=binaritzar_mascara(mascara_predita)
-    gt=binaritzar_mascara(mascara_gt)
-
-    if pred.shape!=gt.shape:
-        raise ValueError("ERROR: la mascara predita i el ground truth no tenen la mateixa mida")
-
-    TP=np.logical_and(pred==True,gt==True).sum()
-    FP=np.logical_and(pred==True,gt==False).sum()
-    FN=np.logical_and(pred==False,gt==True).sum()
-    TN=np.logical_and(pred==False,gt==False).sum()
-
-    return TP,FP,FN,TN
-
-
-def calcular_metriques(mascara_predita,mascara_gt):
-    """
-    Calculem les metriques principals de segmentacio.
-    Aquestes metriques comparen la nostra mascara amb el ground truth.
+    Si el denominador es zero,
+    retornem 0.
     """
 
-    TP,FP,FN,TN=calcular_confusio(mascara_predita,mascara_gt)
+    if denominador == 0:
 
-    # Precisio:
-    # de tot el que hem marcat com exsudat, quina part ho era realment
-    precisio=TP/(TP+FP+eps)
+        return 0.0
 
-    # Recall:
-    # de tots els exsudats reals, quants hem trobat
-    recall=TP/(TP+FN+eps)
+    return numerador / denominador
 
-    # F1:
-    # barreja precisio i recall en un sol valor
-    f1=2*precisio*recall/(precisio+recall+eps)
 
-    # Dice:
-    # molt usada en segmentacio medica
-    dice=2*TP/(2*TP+FP+FN+eps)
+# -------------------------------------------------------------------------
+# 3. MATRIU DE CONFUSIO
+# -------------------------------------------------------------------------
 
-    # IoU:
-    # interseccio entre unio, mes estricta que Dice
-    iou=TP/(TP+FP+FN+eps)
+def calcular_confusio(
+    mascara_predita,
+    mascara_gt,
+    mascara_avaluacio=None
+):
+    """
+    Calcula TP, FP, FN i TN pixel a pixel.
 
-    # Accuracy:
-    # percentatge total de pixels ben classificats
-    # no sera la mes important perque hi ha molt fons
-    accuracy=(TP+TN)/(TP+FP+FN+TN+eps)
+    TP:
+        prediem exsudat i realment es exsudat
 
-    metriques={
+    FP:
+        prediem exsudat pero es fons
+
+    FN:
+        prediem fons pero realment es exsudat
+
+    TN:
+        prediem fons i realment es fons
+
+
+    mascara_avaluacio:
+        opcionalment permet calcular les metriques
+        nomes dins d'una determinada regio,
+        per exemple dins de la retina.
+    """
+
+    pred = binaritzar_mascara(
+        mascara_predita
+    )
+
+    gt = binaritzar_mascara(
+        mascara_gt
+    )
+
+
+    if pred.shape != gt.shape:
+
+        raise ValueError(
+            "ERROR: la mascara predita i el Ground Truth "
+            "no tenen la mateixa mida"
+        )
+
+
+    # --------------------------------------------------------
+    # OPCIONAL: AVALUAR NOMES UNA REGIO
+    # --------------------------------------------------------
+
+    if mascara_avaluacio is not None:
+
+        zona = binaritzar_mascara(
+            mascara_avaluacio
+        )
+
+        if zona.shape != gt.shape:
+
+            raise ValueError(
+                "ERROR: la mascara d'avaluacio "
+                "no te la mateixa mida"
+            )
+
+
+        pred = pred[zona]
+        gt = gt[zona]
+
+
+    # --------------------------------------------------------
+    # CONFUSIO
+    # --------------------------------------------------------
+
+    TP = np.logical_and(
+        pred,
+        gt
+    ).sum()
+
+
+    FP = np.logical_and(
+        pred,
+        ~gt
+    ).sum()
+
+
+    FN = np.logical_and(
+        ~pred,
+        gt
+    ).sum()
+
+
+    TN = np.logical_and(
+        ~pred,
+        ~gt
+    ).sum()
+
+
+    return (
+        int(TP),
+        int(FP),
+        int(FN),
+        int(TN)
+    )
+
+
+# -------------------------------------------------------------------------
+# 4. METRIQUES
+# -------------------------------------------------------------------------
+
+def calcular_metriques(
+    mascara_predita,
+    mascara_gt,
+    mascara_avaluacio=None
+):
+    """
+    Calcula les principals metriques
+    de segmentacio.
+    """
+
+    TP,FP,FN,TN = calcular_confusio(
+        mascara_predita,
+        mascara_gt,
+        mascara_avaluacio
+    )
+
+
+    # --------------------------------------------------------
+    # PRECISION
+    # --------------------------------------------------------
+    #
+    # De tot el que hem detectat com exsudat,
+    # quina part realment era exsudat?
+
+    precisio = divisio_segura(
+        TP,
+        TP + FP
+    )
+
+
+    # --------------------------------------------------------
+    # RECALL
+    # --------------------------------------------------------
+    #
+    # De tots els exsudats reals,
+    # quants hem aconseguit detectar?
+
+    recall = divisio_segura(
+        TP,
+        TP + FN
+    )
+
+
+    # --------------------------------------------------------
+    # F1
+    # --------------------------------------------------------
+
+    f1 = divisio_segura(
+        2*precisio*recall,
+        precisio + recall
+    )
+
+
+    # --------------------------------------------------------
+    # DICE
+    # --------------------------------------------------------
+    #
+    # Mesura el solapament entre la prediccio
+    # i el Ground Truth.
+
+    dice = divisio_segura(
+        2*TP,
+        2*TP + FP + FN
+    )
+
+
+    # --------------------------------------------------------
+    # IoU
+    # --------------------------------------------------------
+    #
+    # Intersection over Union.
+
+    iou = divisio_segura(
+        TP,
+        TP + FP + FN
+    )
+
+
+    # --------------------------------------------------------
+    # ACCURACY
+    # --------------------------------------------------------
+    #
+    # No sera la nostra metrica principal,
+    # ja que tenim molt mes fons que exsudat.
+
+    accuracy = divisio_segura(
+        TP + TN,
+        TP + FP + FN + TN
+    )
+
+
+    metriques = {
+
         "TP":TP,
         "FP":FP,
         "FN":FN,
         "TN":TN,
+
         "precisio":precisio,
         "recall":recall,
         "f1":f1,
@@ -126,67 +338,283 @@ def calcular_metriques(mascara_predita,mascara_gt):
         "accuracy":accuracy
     }
 
+
     return metriques
 
 
-def comparar_metodes(diccionari_mascares,mascara_gt):
+# -------------------------------------------------------------------------
+# 5. COMPARAR DIFERENTS METODES
+# -------------------------------------------------------------------------
+
+def comparar_metodes(
+    diccionari_mascares,
+    mascara_gt,
+    mascara_avaluacio=None
+):
     """
-    Compara diversos metodes de segmentacio amb el mateix ground truth.
+    Compara diferents metodes utilitzant
+    exactament el mateix Ground Truth.
 
     Exemple:
+
         {
             "Otsu":mascara_otsu,
-            "Kmeans":mascara_kmeans,
+            "INRG":mascara_inrg,
             "Final":mascara_final
         }
     """
 
-    resultats={}
+    resultats = {}
 
-    for nom_metode in diccionari_mascares:
-        mascara_predita=diccionari_mascares[nom_metode]
-        resultats[nom_metode]=calcular_metriques(mascara_predita,mascara_gt)
+
+    for nom_metode,mascara_predita in diccionari_mascares.items():
+
+        resultats[nom_metode] = calcular_metriques(
+            mascara_predita,
+            mascara_gt,
+            mascara_avaluacio
+        )
+
 
     return resultats
 
 
-def imprimir_metriques(nom_metode,metriques):
+# -------------------------------------------------------------------------
+# 6. MOSTRAR METRIQUES
+# -------------------------------------------------------------------------
+
+def imprimir_metriques(
+    nom_metode,
+    metriques
+):
     """
-    Imprimeix les metriques d'un metode de forma clara.
+    Mostra les metriques d'un metode.
     """
 
-    print("\nMetode:",nom_metode)
-    print("TP:",metriques["TP"])
-    print("FP:",metriques["FP"])
-    print("FN:",metriques["FN"])
-    print("TN:",metriques["TN"])
-    print("Precisio:",round(metriques["precisio"],4))
-    print("Recall:",round(metriques["recall"],4))
-    print("F1:",round(metriques["f1"],4))
-    print("Dice:",round(metriques["dice"],4))
-    print("IoU:",round(metriques["iou"],4))
-    print("Accuracy:",round(metriques["accuracy"],4))
+    print(
+        "\nMetode:",
+        nom_metode
+    )
+
+    print(
+        "TP:",
+        metriques["TP"]
+    )
+
+    print(
+        "FP:",
+        metriques["FP"]
+    )
+
+    print(
+        "FN:",
+        metriques["FN"]
+    )
+
+    print(
+        "TN:",
+        metriques["TN"]
+    )
+
+    print(
+        "Precisio:",
+        round(
+            metriques["precisio"],
+            4
+        )
+    )
+
+    print(
+        "Recall:",
+        round(
+            metriques["recall"],
+            4
+        )
+    )
+
+    print(
+        "F1:",
+        round(
+            metriques["f1"],
+            4
+        )
+    )
+
+    print(
+        "Dice:",
+        round(
+            metriques["dice"],
+            4
+        )
+    )
+
+    print(
+        "IoU:",
+        round(
+            metriques["iou"],
+            4
+        )
+    )
+
+    print(
+        "Accuracy:",
+        round(
+            metriques["accuracy"],
+            4
+        )
+    )
 
 
-if __name__=="__main__":
+# -------------------------------------------------------------------------
+# 7. RESUM DE TOT EL DATASET
+# -------------------------------------------------------------------------
 
-    # Prova petita per veure si les metriques funcionen.
-    # 1=exsudat, 0=fons
+def resum_dataset(
+    llista_metriques
+):
+    """
+    Calcula la mitjana i la desviacio estandard
+    de les metriques de totes les imatges.
 
-    mascara_gt=np.array([
+    Aquesta funcio sera util per obtenir
+    els resultats finals del projecte.
+    """
+
+    noms = [
+        "precisio",
+        "recall",
+        "f1",
+        "dice",
+        "iou",
+        "accuracy"
+    ]
+
+
+    resum = {}
+
+
+    for nom in noms:
+
+        valors = np.array(
+            [
+                m[nom]
+                for m in llista_metriques
+            ],
+            dtype=float
+        )
+
+
+        resum[nom] = {
+
+            "mitjana":np.mean(
+                valors
+            ),
+
+            "desviacio":np.std(
+                valors
+            )
+        }
+
+
+    return resum
+
+
+# -------------------------------------------------------------------------
+# 8. MOSTRAR RESUM DEL DATASET
+# -------------------------------------------------------------------------
+
+def imprimir_resum_dataset(
+    nom_metode,
+    resum,
+    nombre_imatges
+):
+    """
+    Mostra mitjana +- desviacio estandard
+    de totes les imatges.
+    """
+
+    print("\n======================================")
+
+    print(
+        "RESULTATS DATASET:",
+        nom_metode
+    )
+
+    print(
+        "Nombre d'imatges:",
+        nombre_imatges
+    )
+
+    print("======================================")
+
+
+    noms = [
+        "precisio",
+        "recall",
+        "dice",
+        "iou",
+        "accuracy"
+    ]
+
+
+    for nom in noms:
+
+        mitjana = resum[
+            nom
+        ]["mitjana"]
+
+        desviacio = resum[
+            nom
+        ]["desviacio"]
+
+
+        print(
+            nom,
+            ":",
+            round(mitjana,4),
+            "+/-",
+            round(desviacio,4)
+        )
+
+
+# -------------------------------------------------------------------------
+# 9. PROVA DEL BLOC
+# -------------------------------------------------------------------------
+
+if __name__ == "__main__":
+
+
+    mascara_gt = np.array([
+
         [0,0,1,1],
+
         [0,0,1,1],
+
         [0,0,0,0],
+
         [1,1,0,0]
     ])
 
-    mascara_predita=np.array([
+
+    mascara_predita = np.array([
+
         [0,0,1,0],
+
         [0,0,1,1],
+
         [0,1,0,0],
+
         [1,0,0,0]
     ])
 
-    metriques=calcular_metriques(mascara_predita,mascara_gt)
 
-    imprimir_metriques("prova",metriques)
+    metriques = calcular_metriques(
+        mascara_predita,
+        mascara_gt
+    )
+
+
+    imprimir_metriques(
+        "Prova Bloc 2",
+        metriques
+    )

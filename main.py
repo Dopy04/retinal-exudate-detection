@@ -18,6 +18,21 @@ from src.nick_inrg import invertir_canal,segmentar_nick,segmentar_inrg
 from src.disc_optic import detecta_disc_optic,elimina_disc_optic
 from src.postprocessament import netejar_mascara
 from src.watershed import transformar_distancia,trobar_marcadors,aplicar_watershed
+from src.deteccio_blobs import (
+    crea_taula_features,
+    imprimeix_resum_features,
+    ajunta_taules
+)
+
+from src.classificador_SVM import (
+    separa_train_test_per_imatge,
+    entrena_svm,
+    imprimeix_features_seleccionades,
+    prediu_taula,
+    avalua_prediccio_blobs,
+    reconstrueix_mascara_svm
+)
+
 
 # BLOC 2 - METRIQUES
 
@@ -1147,6 +1162,691 @@ for nom_imatge,nom_gt in imatges:
     plt.tight_layout(
         rect=[0,0,1,0.95],
         h_pad=2
+    )
+
+    plt.show()
+    
+# ============================================================
+# BLOC 10 - FEATURES DELS BLOBS
+# PROVA DELS DOS PIPELINES
+# ============================================================
+
+print("\n==========================================")
+print("BLOC 10 - FEATURES DELS DOS PIPELINES")
+print("==========================================")
+
+
+# Guardarem les taules de cada imatge.
+taules_otsu = []
+taules_inrg = []
+
+
+# Guardarem també les etiquetes de Watershed,
+# la GT i la imatge perquè les necessitarem al Bloc 11.
+dades_otsu = {}
+dades_inrg = {}
+
+
+for nom_imatge,nom_gt in imatges:
+
+    print("\n==========================================")
+    print("PROVA BLOC 10:",nom_imatge)
+    print("==========================================")
+
+
+    ruta_imatge = ruta_dades/nom_imatge
+    ruta_gt = ruta_dades/nom_gt
+
+
+    # --------------------------------------------------------
+    # PREPROCESSAMENT
+    # --------------------------------------------------------
+
+    imatge,mascara_gt,mascara_retina,imatge_retina,canals = preprocessa_imatge(
+        ruta_imatge,
+        ruta_gt
+    )
+
+    canal_r = canals[0]
+    canal_g = canals[1]
+
+
+    # --------------------------------------------------------
+    # DETECCIO DEL DISC OPTIC
+    # --------------------------------------------------------
+
+    # De moment mantenim els parametres que hem utilitzat
+    # en les ultimes proves.
+    _,_,disc_r = detecta_disc_optic(
+        canal_r,
+        mascara_retina,
+        radi_tancament=4,
+        radi_dilatacio=3
+    )
+
+
+    # ========================================================
+    # PIPELINE A
+    # OTSU
+    # ========================================================
+
+    mascara_otsu = segmentar_otsu(
+        canal_g,
+        mascara_retina
+    )
+
+
+    mascara_otsu_disc = elimina_disc_optic(
+        mascara_otsu,
+        disc_r
+    )
+
+
+    mascara_otsu_morf = netejar_mascara(
+        mascara_otsu_disc,
+        mida_minima=50,
+        mida_forat=50
+    )
+
+
+    etiquetes_otsu = aplicar_watershed(
+        mascara_otsu_morf,
+        distancia_minima=5
+    )
+
+
+    # --------------------------------------------------------
+    # FEATURES PIPELINE A
+    # --------------------------------------------------------
+
+    taula_otsu = crea_taula_features(
+        imatge,
+        canals,
+        etiquetes_otsu,
+        mascara_gt,
+        nom_imatge=nom_imatge,
+        nom_canal="G",
+        nom_metode="Otsu"
+    )
+
+
+    print("\n---------- PIPELINE A: OTSU ----------")
+
+    print(
+        "Blobs Watershed:",
+        np.max(etiquetes_otsu)
+    )
+
+    imprimeix_resum_features(
+        taula_otsu,
+        nom_imatge+" - Otsu"
+    )
+
+
+    # Metriques abans del SVM.
+    mascara_candidats_otsu = etiquetes_otsu > 0
+
+    imprimir_metriques(
+        "PIPELINE A - Otsu abans SVM",
+        calcular_metriques(
+            mascara_candidats_otsu,
+            mascara_gt
+        )
+    )
+
+
+    taules_otsu.append(
+        taula_otsu
+    )
+
+
+    dades_otsu[nom_imatge] = {
+
+        "imatge":imatge,
+
+        "gt":mascara_gt,
+
+        "etiquetes":etiquetes_otsu,
+
+        "candidats":mascara_candidats_otsu
+    }
+
+
+    # ========================================================
+    # PIPELINE B
+    # INRG
+    # ========================================================
+
+    # INRG inverteix internament el canal.
+    # Per tant li passem directament el canal G original.
+
+    mascara_inrg = segmentar_inrg(
+        canal_g,
+        mascara_retina,
+        mida_finestra=95,
+        k=-0.2,
+        iteracions=3,
+        delta=0.1
+    )
+
+
+    mascara_inrg_disc = elimina_disc_optic(
+        mascara_inrg,
+        disc_r
+    )
+
+
+    mascara_inrg_morf = netejar_mascara(
+        mascara_inrg_disc,
+        mida_minima=50,
+        mida_forat=50
+    )
+
+
+    etiquetes_inrg = aplicar_watershed(
+        mascara_inrg_morf,
+        distancia_minima=5
+    )
+
+
+    # --------------------------------------------------------
+    # FEATURES PIPELINE B
+    # --------------------------------------------------------
+
+    taula_inrg = crea_taula_features(
+        imatge,
+        canals,
+        etiquetes_inrg,
+        mascara_gt,
+        nom_imatge=nom_imatge,
+        nom_canal="G",
+        nom_metode="INRG"
+    )
+
+
+    print("\n---------- PIPELINE B: INRG ----------")
+
+    print(
+        "Blobs Watershed:",
+        np.max(etiquetes_inrg)
+    )
+
+    imprimeix_resum_features(
+        taula_inrg,
+        nom_imatge+" - INRG"
+    )
+
+
+    mascara_candidats_inrg = etiquetes_inrg > 0
+
+
+    imprimir_metriques(
+        "PIPELINE B - INRG abans SVM",
+        calcular_metriques(
+            mascara_candidats_inrg,
+            mascara_gt
+        )
+    )
+
+
+    taules_inrg.append(
+        taula_inrg
+    )
+
+
+    dades_inrg[nom_imatge] = {
+
+        "imatge":imatge,
+
+        "gt":mascara_gt,
+
+        "etiquetes":etiquetes_inrg,
+
+        "candidats":mascara_candidats_inrg
+    }
+
+
+# ============================================================
+# AJUNTEM LES TAULES
+# ============================================================
+
+taula_total_otsu = ajunta_taules(
+    taules_otsu
+)
+
+taula_total_inrg = ajunta_taules(
+    taules_inrg
+)
+
+
+print("\n==========================================")
+print("RESUM BLOC 10")
+print("==========================================")
+
+
+print("\nPIPELINE A - OTSU")
+
+print(
+    "Blobs totals:",
+    len(taula_total_otsu)
+)
+
+print(
+    "Positius:",
+    np.sum(taula_total_otsu["etiqueta"]==1)
+)
+
+print(
+    "Negatius:",
+    np.sum(taula_total_otsu["etiqueta"]==0)
+)
+
+print(
+    "Ambigus:",
+    np.sum(taula_total_otsu["etiqueta"]==-1)
+)
+
+
+print("\nPIPELINE B - INRG")
+
+print(
+    "Blobs totals:",
+    len(taula_total_inrg)
+)
+
+print(
+    "Positius:",
+    np.sum(taula_total_inrg["etiqueta"]==1)
+)
+
+print(
+    "Negatius:",
+    np.sum(taula_total_inrg["etiqueta"]==0)
+)
+
+print(
+    "Ambigus:",
+    np.sum(taula_total_inrg["etiqueta"]==-1)
+)
+
+# ============================================================
+# BLOC 11 - SVM
+# COMPARACIO DELS DOS PIPELINES
+# ============================================================
+
+print("\n==========================================")
+print("BLOC 11 - SVM DELS DOS PIPELINES")
+print("==========================================")
+
+
+# Guardarem tots els resultats per calcular
+# una mitjana final.
+resum_final = []
+
+
+# ============================================================
+# FUNCIO DE PROVA D'UN PIPELINE
+# ============================================================
+
+def prova_svm_pipeline(
+    taula_total,
+    dades,
+    nom_test,
+    nom_pipeline
+):
+
+    print("\n------------------------------------------")
+    print(nom_pipeline)
+    print("Imatge test:",nom_test)
+    print("------------------------------------------")
+
+
+    # --------------------------------------------------------
+    # TRAIN / TEST PER IMATGE
+    # --------------------------------------------------------
+
+    taula_train,taula_test = separa_train_test_per_imatge(
+        taula_total,
+        [nom_test]
+    )
+
+
+    print(
+        "Blobs train:",
+        len(taula_train)
+    )
+
+    print(
+        "Blobs test:",
+        len(taula_test)
+    )
+
+
+    print(
+        "Positius train:",
+        np.sum(taula_train["etiqueta"]==1)
+    )
+
+    print(
+        "Negatius train:",
+        np.sum(taula_train["etiqueta"]==0)
+    )
+
+    print(
+        "Ambigus train:",
+        np.sum(taula_train["etiqueta"]==-1)
+    )
+
+
+    # --------------------------------------------------------
+    # ENTRENAR SVM
+    # --------------------------------------------------------
+
+    try:
+
+        escalador,selector,model = entrena_svm(
+            taula_train,
+            k_chi2=3
+        )
+
+    except ValueError as error:
+
+        print(
+            "ERROR ENTRENANT:",
+            error
+        )
+
+        return None
+
+
+    # Features seleccionades per Chi2.
+    imprimeix_features_seleccionades(
+        selector
+    )
+
+
+    # --------------------------------------------------------
+    # PREDICCIO DELS BLOBS
+    # --------------------------------------------------------
+
+    taula_predita = prediu_taula(
+        taula_test,
+        escalador,
+        selector,
+        model
+    )
+
+
+    avalua_prediccio_blobs(
+        taula_predita
+    )
+
+
+    # --------------------------------------------------------
+    # RECONSTRUIR MASCARA
+    # --------------------------------------------------------
+
+    etiquetes = dades[
+        nom_test
+    ]["etiquetes"]
+
+
+    mascara_gt = dades[
+        nom_test
+    ]["gt"]
+
+
+    mascara_abans = dades[
+        nom_test
+    ]["candidats"]
+
+
+    mascara_svm = reconstrueix_mascara_svm(
+        etiquetes,
+        taula_predita
+    )
+
+
+    # --------------------------------------------------------
+    # METRIQUES PIXEL A PIXEL
+    # --------------------------------------------------------
+
+    metriques_abans = calcular_metriques(
+        mascara_abans,
+        mascara_gt
+    )
+
+
+    metriques_svm = calcular_metriques(
+        mascara_svm,
+        mascara_gt
+    )
+
+
+    print("\nMETRIQUES ABANS DEL SVM")
+
+    imprimir_metriques(
+        nom_pipeline+" abans SVM",
+        metriques_abans
+    )
+
+
+    print("\nMETRIQUES DESPRES DEL SVM")
+
+    imprimir_metriques(
+        nom_pipeline+" + SVM",
+        metriques_svm
+    )
+
+
+    return {
+
+        "mascara_abans":mascara_abans,
+
+        "mascara_svm":mascara_svm,
+
+        "metriques_abans":metriques_abans,
+
+        "metriques_svm":metriques_svm
+    }
+
+
+# ============================================================
+# LEAVE-ONE-IMAGE-OUT
+# ============================================================
+
+for nom_test,nom_gt in imatges:
+
+    print("\n\n##########################################")
+    print("IMATGE DE TEST:",nom_test)
+    print("##########################################")
+
+
+    # --------------------------------------------------------
+    # PIPELINE A
+    # --------------------------------------------------------
+
+    resultat_otsu = prova_svm_pipeline(
+
+        taula_total_otsu,
+
+        dades_otsu,
+
+        nom_test,
+
+        "PIPELINE A - OTSU"
+    )
+
+
+    # --------------------------------------------------------
+    # PIPELINE B
+    # --------------------------------------------------------
+
+    resultat_inrg = prova_svm_pipeline(
+
+        taula_total_inrg,
+
+        dades_inrg,
+
+        nom_test,
+
+        "PIPELINE B - INRG"
+    )
+
+
+    # Si algun SVM no s'ha pogut entrenar,
+    # passem a la següent imatge.
+    if resultat_otsu is None or resultat_inrg is None:
+
+        continue
+
+
+    # --------------------------------------------------------
+    # GUARDAR RESULTATS
+    # --------------------------------------------------------
+
+    resum_final.append({
+
+        "imatge":nom_test,
+
+        "otsu_abans":resultat_otsu["metriques_abans"],
+
+        "otsu_svm":resultat_otsu["metriques_svm"],
+
+        "inrg_abans":resultat_inrg["metriques_abans"],
+
+        "inrg_svm":resultat_inrg["metriques_svm"]
+    })
+
+
+    # --------------------------------------------------------
+    # VISUALITZACIO FINAL
+    # --------------------------------------------------------
+
+    imatge_original = dades_otsu[
+        nom_test
+    ]["imatge"]
+
+
+    mascara_gt = dades_otsu[
+        nom_test
+    ]["gt"]
+
+
+    plt.figure(
+        figsize=(16,9)
+    )
+
+
+    plt.suptitle(
+        "COMPARACIO PIPELINES - "+nom_test,
+        fontsize=16
+    )
+
+
+    # ORIGINAL
+    plt.subplot(2,3,1)
+
+    plt.imshow(
+        imatge_original
+    )
+
+    plt.title(
+        "Original"
+    )
+
+    plt.axis(
+        "off"
+    )
+
+
+    # GROUND TRUTH
+    plt.subplot(2,3,2)
+
+    plt.imshow(
+        mascara_gt,
+        cmap="gray"
+    )
+
+    plt.title(
+        "Ground Truth"
+    )
+
+    plt.axis(
+        "off"
+    )
+
+
+    # OTSU ABANS DEL SVM
+    plt.subplot(2,3,3)
+
+    plt.imshow(
+        resultat_otsu["mascara_abans"],
+        cmap="gray"
+    )
+
+    plt.title(
+        "Otsu abans SVM"
+    )
+
+    plt.axis(
+        "off"
+    )
+
+
+    # OTSU DESPRES SVM
+    plt.subplot(2,3,4)
+
+    plt.imshow(
+        resultat_otsu["mascara_svm"],
+        cmap="gray"
+    )
+
+    plt.title(
+        "Otsu + SVM"
+    )
+
+    plt.axis(
+        "off"
+    )
+
+
+    # INRG ABANS DEL SVM
+    plt.subplot(2,3,5)
+
+    plt.imshow(
+        resultat_inrg["mascara_abans"],
+        cmap="gray"
+    )
+
+    plt.title(
+        "INRG abans SVM"
+    )
+
+    plt.axis(
+        "off"
+    )
+
+
+    # INRG DESPRES DEL SVM
+    plt.subplot(2,3,6)
+
+    plt.imshow(
+        resultat_inrg["mascara_svm"],
+        cmap="gray"
+    )
+
+    plt.title(
+        "INRG + SVM"
+    )
+
+    plt.axis(
+        "off"
+    )
+
+
+    plt.tight_layout(
+        rect=[0,0,1,0.94]
     )
 
     plt.show()

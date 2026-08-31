@@ -27,13 +27,55 @@ def aplicar_mascara_retina(mascara,mascara_retina):
     amb la zona de la retina que és la que ens interresa. Si per un cas no usem
     aquesta mascara es detectarien coses en el fons i no tindriem una segmentació correcte
     """
+
+    mascara=mascara.astype(bool)
     
     if mascara_retina is None:
         return mascara
 
+    mascara_retina=mascara_retina.astype(bool)
+
+    if mascara.shape!=mascara_retina.shape:
+        raise ValueError(
+            "La mascara i la mascara de retina no tenen la mateixa mida"
+        )
+
     mascara=mascara & mascara_retina
 
     return mascara
+
+
+def preparar_canal_local(canal,mascara_retina):
+    """
+    Preparem el canal abans d'utilitzar metodes de llindar local.
+
+    El problema es que fora de la retina tenim pixels negres i aquests
+    pixels podrien afectar el calcul dels llindars prop del contorn.
+
+    Per evitar-ho substituim temporalment el fons exterior per la mediana
+    dels pixels de la retina.
+    """
+
+    canal_preparat=np.copy(canal).astype(np.float64)
+
+    if mascara_retina is None:
+        return canal_preparat
+
+    if canal.shape!=mascara_retina.shape:
+        raise ValueError(
+            "El canal i la mascara de retina no tenen la mateixa mida"
+        )
+
+    valors=canal[mascara_retina]
+
+    if valors.size==0:
+        return canal_preparat
+
+    valor_fons=np.median(valors)
+
+    canal_preparat[~mascara_retina]=valor_fons
+
+    return canal_preparat
 
 
 def segmentar_otsu(canal,mascara_retina=None):
@@ -47,12 +89,31 @@ def segmentar_otsu(canal,mascara_retina=None):
     amb una iluminació no uniforme
     """
 
+    canal=np.asarray(canal,dtype=np.float64)
+
     # Si tenim mascara de retina, calculem el llindar nomes dins la retina
     if mascara_retina is not None:
+
+        if canal.shape!=mascara_retina.shape:
+            raise ValueError(
+                "El canal i la mascara de retina no tenen la mateixa mida"
+            )
+
         valors=canal[mascara_retina]
-        llindar=filters.threshold_otsu(valors)
+
     else:
-        llindar=filters.threshold_otsu(canal)
+        valors=canal.ravel()
+
+    # Evitem errors si per algun problema no tenim pixels
+    if valors.size==0:
+        return np.zeros(canal.shape,dtype=bool)
+
+    # Si tots els pixels tenen practicament el mateix valor
+    # Otsu no pot separar correctament dues classes
+    if np.max(valors)-np.min(valors)<1e-8:
+        return np.zeros(canal.shape,dtype=bool)
+
+    llindar=filters.threshold_otsu(valors)
 
     # Els exsudats son brillants, per aixo fem canal>llindar
     mascara=canal>llindar
@@ -90,23 +151,46 @@ def segmentar_adaptatiu(canal,mascara_retina=None,mida_bloc=101,offset=-0.15):
     amb iluminació no uniforme.
     """
 
+    canal_preparat=preparar_canal_local(
+        canal,
+        mascara_retina
+    )
+
     # El block size ha de ser senar. Si ens passen un valor parell, el corregim.
     if mida_bloc%2==0:
         mida_bloc=mida_bloc+1
 
-    llindar_local=filters.threshold_local(canal,block_size=mida_bloc,offset=offset)
+    # Evitem que la finestra sigui mes gran que la imatge
+    mida_max=min(canal.shape)
+
+    if mida_max%2==0:
+        mida_max=mida_max-1
+
+    mida_bloc=min(
+        mida_bloc,
+        mida_max
+    )
+
+    if mida_bloc<3:
+        mida_bloc=3
+
+    llindar_local=filters.threshold_local(
+        canal_preparat,
+        block_size=mida_bloc,
+        offset=offset
+    )
 
     #Els pixels per sobre del llindar local seràn els exudats perquè són els que 
     #més brillen
     
-    mascara=canal>llindar_local
+    mascara=canal_preparat>llindar_local
 
     mascara=aplicar_mascara_retina(mascara,mascara_retina)
 
     return mascara
 
 
-def segmentar_sauvola(canal,mascara_retina=None,mida_finestra=51, k=0.2):
+def segmentar_sauvola(canal,mascara_retina=None,mida_finestra=51,k=0.2):
     """
     Segmentacio amb Sauvola.
 
@@ -115,12 +199,35 @@ def segmentar_sauvola(canal,mascara_retina=None,mida_finestra=51, k=0.2):
     millor que l'OTSU.
     """
 
+    canal_preparat=preparar_canal_local(
+        canal,
+        mascara_retina
+    )
+
     if mida_finestra%2==0:
         mida_finestra=mida_finestra+1
 
-    llindar=filters.threshold_sauvola(canal,window_size=mida_finestra,k=k)
+    # Evitem que la finestra sigui mes gran que la imatge
+    mida_max=min(canal.shape)
 
-    mascara=canal>llindar
+    if mida_max%2==0:
+        mida_max=mida_max-1
+
+    mida_finestra=min(
+        mida_finestra,
+        mida_max
+    )
+
+    if mida_finestra<3:
+        mida_finestra=3
+
+    llindar=filters.threshold_sauvola(
+        canal_preparat,
+        window_size=mida_finestra,
+        k=k
+    )
+
+    mascara=canal_preparat>llindar
 
     mascara=aplicar_mascara_retina(mascara,mascara_retina)
 
@@ -148,11 +255,42 @@ def segmentar_kmeans_canal(canal,mascara_retina=None,n_clusters=3):
 
 
     if mascara_retina is not None:
+
+        if canal.shape!=mascara_retina.shape:
+            raise ValueError(
+                "El canal i la mascara de retina no tenen la mateixa mida"
+            )
+
         dades=canal[mascara_retina].reshape(-1,1)
+
     else:
         dades=canal.reshape(-1,1)
 
-    model=KMeans(n_clusters=n_clusters,random_state=0,n_init=10)
+    # Evitem errors si no tenim pixels
+    if dades.size==0:
+        return np.zeros((alcada,amplada),dtype=bool)
+
+    # Comprovem quants valors diferents tenim
+    valors_unics=np.unique(dades)
+
+    # Si tots els pixels tenen el mateix valor
+    # no té sentit aplicar K-means
+    if len(valors_unics)<2:
+        return np.zeros((alcada,amplada),dtype=bool)
+
+    # Si tenim menys intensitats diferents que clusters
+    # reduim el nombre de clusters automaticament
+    n_clusters_real=min(
+        n_clusters,
+        len(valors_unics)
+    )
+
+    model=KMeans(
+        n_clusters=n_clusters_real,
+        random_state=0,
+        n_init=10
+    )
+
     etiquetes=model.fit_predict(dades)
 
     # Centres dels clusters.
@@ -183,11 +321,32 @@ def obtenir_mascares_baseline(canal,mascara_retina=None):
     passar-ho directament a les metriques.
     """
 
-    mascara_otsu=segmentar_otsu(canal,mascara_retina)
-    mascara_fix=segmentar_llindar_fix(canal,llindar=0.7,mascara_retina=mascara_retina)
-    mascara_adaptativa=segmentar_adaptatiu(canal,mascara_retina,mida_bloc=51,offset=0)
-    mascara_sauvola=segmentar_sauvola(canal,mascara_retina,mida_finestra=51)
-    mascara_kmeans=segmentar_kmeans_canal(canal,mascara_retina,n_clusters=3)
+    mascara_otsu=segmentar_otsu(
+        canal,
+        mascara_retina
+    )
+
+    mascara_fix=segmentar_llindar_fix(
+        canal,
+        llindar=0.7,
+        mascara_retina=mascara_retina
+    )
+
+    mascara_adaptativa=segmentar_adaptatiu(
+        canal,
+        mascara_retina
+    )
+
+    mascara_sauvola=segmentar_sauvola(
+        canal,
+        mascara_retina
+    )
+
+    mascara_kmeans=segmentar_kmeans_canal(
+        canal,
+        mascara_retina,
+        n_clusters=3
+    )
 
     mascares={
         "Otsu":mascara_otsu,

@@ -1,285 +1,582 @@
 """
 Bloc 11 - Classificador SVM de blobs.
 
-Aquest bloc agafa la taula de features del Bloc 10 i entrena un SVM
-per decidir quins blobs son exsudats i quins son falsos positius.
+Aquest bloc agafa la taula de features del Bloc 10
+i entrena un SVM per decidir quins blobs son exsudats
+i quins son falsos positius.
 
-La idea es:
+Pipeline:
 
     taula features
         ↓
     eliminar blobs ambigus
         ↓
-    seleccionar columnes valides
+    normalitzar features
         ↓
-    Chi2 per triar les millors features
+    Chi2
         ↓
     SVM
         ↓
-    reconstruir mascara final nomes amb els blobs acceptats
+    prediccio dels blobs
+        ↓
+    reconstruccio de la mascara
 """
 
 import numpy as np
 
-from skimage.measure import label
-
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.svm import SVC
-from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 
-from deteccio_blobs import columnes_svm
+from sklearn.metrics import (
+    precision_score,
+    recall_score,
+    f1_score,
+    accuracy_score
+)
+
+from src.deteccio_blobs import columnes_svm
 
 
 # -------------------------------------------------------------------------
-# 1. Preparar dades per al SVM
+# 1. ELIMINAR BLOBS AMBIGUS
 # -------------------------------------------------------------------------
 
-def  elimina_ambigus(taula):
+def elimina_ambigus(
+    taula
+):
     """
     Elimina els blobs amb etiqueta -1.
 
     etiqueta = 1   exsudat
     etiqueta = 0   fals positiu
     etiqueta = -1  ambigu
-
-    Els ambigus no els usem per entrenar al principi.
     """
 
-    taula_bona = taula[taula["etiqueta"] != -1].copy()
+    taula_bona = taula[
+        taula["etiqueta"] != -1
+    ].copy()
 
     return taula_bona
 
 
-def separa_train_test_per_imatge(taula, imatges_test):
+# -------------------------------------------------------------------------
+# 2. SEPARAR TRAIN I TEST
+# -------------------------------------------------------------------------
+
+def separa_train_test_per_imatge(
+    taula,
+    imatges_test
+):
     """
     Separa train i test segons el nom de la imatge.
 
-    Aixo es important perquè no volem entrenar i testejar amb blobs
-    de la mateixa imatge.
+    D'aquesta manera no entrenem i testegem
+    amb blobs de la mateixa imatge.
     """
 
-    taula_train = taula[~taula["nom_imatge"].isin(imatges_test)].copy()
-    taula_test = taula[taula["nom_imatge"].isin(imatges_test)].copy()
+    taula_train = taula[
+        ~taula["nom_imatge"].isin(imatges_test)
+    ].copy()
 
-    return taula_train, taula_test
+
+    taula_test = taula[
+        taula["nom_imatge"].isin(imatges_test)
+    ].copy()
 
 
-def prepara_x_y(taula):
+    return (
+        taula_train,
+        taula_test
+    )
+
+
+# -------------------------------------------------------------------------
+# 3. PREPARAR X
+# -------------------------------------------------------------------------
+
+def prepara_x(
+    taula
+):
     """
-    Prepara X i y per al SVM.
+    Prepara les features X.
 
-    X conte nomes les features.
-    y conte l'etiqueta.
-
-    No usem solapament_gt com a feature perquè en una imatge nova
-    no tindrem Ground Truth.
+    Aquesta funcio serveix tant per entrenar
+    com per fer prediccions.
     """
 
     columnes = columnes_svm()
 
-    x = taula[columnes].values
-    y = taula["etiqueta"].values.astype(int)
+    x = taula[
+        columnes
+    ].values.astype(float)
 
-    return x, y, columnes
+
+    # Evitem problemes si apareix algun
+    # NaN o infinit en les features.
+    x = np.nan_to_num(
+        x,
+        nan=0.0,
+        posinf=0.0,
+        neginf=0.0
+    )
+
+    return (
+        x,
+        columnes
+    )
+
+
+def prepara_x_y(
+    taula
+):
+    """
+    Prepara X i y per entrenar el SVM.
+    """
+
+    x,columnes = prepara_x(
+        taula
+    )
+
+    y = taula[
+        "etiqueta"
+    ].values.astype(int)
+
+
+    return (
+        x,
+        y,
+        columnes
+    )
 
 
 # -------------------------------------------------------------------------
-# 2. Entrenar SVM amb Chi2
+# 4. ENTRENAR SVM
 # -------------------------------------------------------------------------
 
-def entrena_svm(taula_train, k_chi2=3):
+def entrena_svm(
+    taula_train,
+    k_chi2=3
+):
     """
-    Entrena el classificador.
+    Entrena el classificador SVM.
 
-    Primer normalitzem les features a [0, 1], perquè Chi2 necessita
-    valors no negatius.
+    Passos:
 
-    Despres seleccionem les k millors features amb Chi2.
-
-    Finalment entrenem un SVM amb kernel RBF.
+        1. eliminar blobs ambigus
+        2. normalitzar a [0,1]
+        3. seleccionar features amb Chi2
+        4. entrenar SVM
     """
 
-    taula_train =  elimina_ambigus(taula_train)
+    taula_train = elimina_ambigus(
+        taula_train
+    )
 
-    x_train, y_train, columnes = prepara_x_y(taula_train)
 
-    # El SVM necessita exemples de les dues classes.
-    # Si nomes tenim positius o nomes negatius, no pot aprendre.
-    classes = np.unique(y_train)
+    # Comprovem que tenim blobs
+    if len(taula_train) == 0:
+
+        raise ValueError(
+            "No hi ha blobs valids per entrenar."
+        )
+
+
+    x_train,y_train,columnes = prepara_x_y(
+        taula_train
+    )
+
+
+    # ---------------------------------------------------------
+    # COMPROVAR CLASSES
+    # ---------------------------------------------------------
+
+    classes = np.unique(
+        y_train
+    )
+
 
     if len(classes) < 2:
-        raise ValueError("El train nomes te una classe. Calen positius i negatius.")
 
-    # Normalitzem totes les features entre 0 i 1.
+        raise ValueError(
+            "El train nomes te una classe. "
+            "Calen positius i negatius."
+        )
+
+
+    # ---------------------------------------------------------
+    # NORMALITZACIO
+    # ---------------------------------------------------------
+
     escalador = MinMaxScaler()
-    x_train_norm = escalador.fit_transform(x_train)
 
-    # Seleccionem les millors features.
+
+    x_train_norm = escalador.fit_transform(
+        x_train
+    )
+
+
+    # ---------------------------------------------------------
+    # SELECCIO DE FEATURES AMB CHI2
+    # ---------------------------------------------------------
+
     selector = SelectKBest(
         score_func=chi2,
-        k=k_chi2,
+        k=k_chi2
     )
+
 
     x_train_sel = selector.fit_transform(
         x_train_norm,
-        y_train,
+        y_train
     )
 
-    # class_weight balanced ajuda quan tenim molts mes negatius que positius.
+
+    # ---------------------------------------------------------
+    # SVM
+    # ---------------------------------------------------------
+
     model = SVC(
+
         kernel="rbf",
+
         C=1.0,
+
         gamma="scale",
-        class_weight="balanced",
+
+        class_weight="balanced"
     )
+
 
     model.fit(
         x_train_sel,
-        y_train,
+        y_train
     )
 
-    return escalador, selector, model
+
+    return (
+        escalador,
+        selector,
+        model
+    )
 
 
-def imprimeix_features_seleccionades(selector):
+# -------------------------------------------------------------------------
+# 5. MOSTRAR FEATURES SELECCIONADES
+# -------------------------------------------------------------------------
+
+def imprimeix_features_seleccionades(
+    selector
+):
     """
-    Mostra quines features ha triat Chi2.
+    Mostra quines features ha seleccionat Chi2.
     """
 
     columnes = columnes_svm()
+
     mascara = selector.get_support()
+
     puntuacions = selector.scores_
 
+
     print("\n====================================")
-    print("FEATURES SELECCIONADES AMB CHI2")
+
+    print(
+        "FEATURES SELECCIONADES AMB CHI2"
+    )
+
     print("====================================")
 
-    for i in range(len(columnes)):
+
+    for i in range(
+        len(columnes)
+    ):
 
         if mascara[i]:
-            print(columnes[i], "score:", round(puntuacions[i], 4))
+
+            print(
+                columnes[i],
+                "score:",
+                round(
+                    puntuacions[i],
+                    4
+                )
+            )
 
 
 # -------------------------------------------------------------------------
-# 3. Predir blobs nous
+# 6. PREDIR BLOBS
 # -------------------------------------------------------------------------
 
-def prediu_taula(taula, escalador, selector, model):
+def prediu_taula(
+    taula,
+    escalador,
+    selector,
+    model
+):
     """
     Aplica el SVM sobre una taula de blobs.
 
-    Retorna la mateixa taula, pero amb una columna nova:
+    Afegeix una columna nova:
+
         prediccio_svm
     """
 
-    x, y, columnes = prepara_x_y(taula)
+    if len(taula) == 0:
 
-    x_norm = escalador.transform(x)
-    x_sel = selector.transform(x_norm)
+        taula_predita = taula.copy()
 
-    prediccio = model.predict(x_sel)
+        taula_predita[
+            "prediccio_svm"
+        ] = []
+
+        return taula_predita
+
+
+    x,columnes = prepara_x(
+        taula
+    )
+
+
+    # Mateixa normalitzacio que hem utilitzat
+    # durant l'entrenament.
+    x_norm = escalador.transform(
+        x
+    )
+
+
+    # Mateixes features seleccionades
+    x_sel = selector.transform(
+        x_norm
+    )
+
+
+    # Prediccio del SVM
+    prediccio = model.predict(
+        x_sel
+    )
+
 
     taula_predita = taula.copy()
-    taula_predita["prediccio_svm"] = prediccio
+
+
+    taula_predita[
+        "prediccio_svm"
+    ] = prediccio
+
 
     return taula_predita
 
 
-def avalua_prediccio_blobs(taula_predita):
+# -------------------------------------------------------------------------
+# 7. AVALUACIO A NIVELL DE BLOBS
+# -------------------------------------------------------------------------
+
+def avalua_prediccio_blobs(
+    taula_predita
+):
     """
     Avalua el SVM a nivell de blobs.
 
-    Aquesta metrica no es encara la metrica final de segmentacio.
-    Nomes ens diu si el classificador encerta blobs positius/negatius.
+    Aquestes metriques no son encara
+    les metriques finals de segmentacio.
     """
 
-    taula_eval =  elimina_ambigus(taula_predita)
+    taula_eval = elimina_ambigus(
+        taula_predita
+    )
 
-    y_real = taula_eval["etiqueta"].values.astype(int)
-    y_pred = taula_eval["prediccio_svm"].values.astype(int)
 
-    precisio = precision_score(y_real, y_pred, zero_division=0)
-    recall = recall_score(y_real, y_pred, zero_division=0)
-    f1 = f1_score(y_real, y_pred, zero_division=0)
-    accuracy = accuracy_score(y_real, y_pred)
+    if len(taula_eval) == 0:
+
+        print(
+            "No hi ha blobs valids per avaluar."
+        )
+
+        return
+
+
+    y_real = taula_eval[
+        "etiqueta"
+    ].values.astype(int)
+
+
+    y_pred = taula_eval[
+        "prediccio_svm"
+    ].values.astype(int)
+
+
+    precisio = precision_score(
+        y_real,
+        y_pred,
+        zero_division=0
+    )
+
+
+    recall = recall_score(
+        y_real,
+        y_pred,
+        zero_division=0
+    )
+
+
+    f1 = f1_score(
+        y_real,
+        y_pred,
+        zero_division=0
+    )
+
+
+    accuracy = accuracy_score(
+        y_real,
+        y_pred
+    )
+
 
     print("\n====================================")
-    print("AVALUACIO SVM A NIVELL DE BLOBS")
+
+    print(
+        "AVALUACIO SVM A NIVELL DE BLOBS"
+    )
+
     print("====================================")
 
-    print("Precision:", round(precisio, 4))
-    print("Recall:", round(recall, 4))
-    print("F1:", round(f1, 4))
-    print("Accuracy:", round(accuracy, 4))
+
+    print(
+        "Precision:",
+        round(precisio,4)
+    )
+
+    print(
+        "Recall:",
+        round(recall,4)
+    )
+
+    print(
+        "F1:",
+        round(f1,4)
+    )
+
+    print(
+        "Accuracy:",
+        round(accuracy,4)
+    )
 
 
 # -------------------------------------------------------------------------
-# 4. Reconstruir mascara final
+# 8. RECONSTRUIR MASCARA
 # -------------------------------------------------------------------------
 
-def reconstrueix_mascara_svm(mascara_candidats, taula_predita):
+def reconstrueix_mascara_svm(
+    etiquetes,
+    taula_predita
+):
     """
-    Reconstrueix una mascara final amb els blobs acceptats pel SVM.
+    Reconstrueix la mascara final utilitzant
+    directament les etiquetes de Watershed.
 
-    Si prediccio_svm = 1, el blob es conserva.
-    Si prediccio_svm = 0, el blob s'elimina.
+    Si:
+
+        prediccio_svm = 1
+
+    el blob es conserva.
+
+    Si:
+
+        prediccio_svm = 0
+
+    el blob s'elimina.
     """
 
-    mascara_candidats = mascara_candidats.astype(bool)
-
-    # Tornem a etiquetar la mascara candidata.
-    # Ha de coincidir amb el label utilitzat en el Bloc 10.
-    etiquetes = label(
-        mascara_candidats,
-        connectivity=2,
+    etiquetes = np.asarray(
+        etiquetes,
+        dtype=int
     )
 
-    mascara_final = np.zeros_like(
-        mascara_candidats,
-        dtype=bool,
+
+    mascara_final = np.zeros(
+        etiquetes.shape,
+        dtype=bool
     )
 
-    for i in range(len(taula_predita)):
+
+    for i in range(
+        len(taula_predita)
+    ):
 
         fila = taula_predita.iloc[i]
 
-        blob_id = int(fila["blob_id"])
-        prediccio = int(fila["prediccio_svm"])
 
+        blob_id = int(
+            fila["blob_id"]
+        )
+
+
+        prediccio = int(
+            fila["prediccio_svm"]
+        )
+
+
+        # Nomes conservem els blobs
+        # classificats com exsudats.
         if prediccio == 1:
-            mascara_blob = etiquetes == blob_id
-            mascara_final = mascara_final | mascara_blob
+
+            mascara_blob = (
+                etiquetes == blob_id
+            )
+
+
+            mascara_final = (
+                mascara_final |
+                mascara_blob
+            )
+
 
     return mascara_final
 
 
+# -------------------------------------------------------------------------
+# 9. FUNCIO COMPLETA DE CLASSIFICACIO
+# -------------------------------------------------------------------------
+
 def classifica_mascara(
-    mascara_candidats,
+    etiquetes,
     taula_features,
     escalador,
     selector,
-    model,
+    model
 ):
     """
-    Funcio directa per aplicar el SVM a una mascara candidata.
+    Aplica directament el SVM
+    als blobs obtinguts amb Watershed.
 
     Retorna:
+
         mascara_svm
         taula_predita
     """
 
     taula_predita = prediu_taula(
+
         taula_features,
+
         escalador,
+
         selector,
-        model,
+
+        model
     )
+
 
     mascara_svm = reconstrueix_mascara_svm(
-        mascara_candidats,
-        taula_predita,
+
+        etiquetes,
+
+        taula_predita
     )
 
-    return mascara_svm, taula_predita
 
+    return (
+        mascara_svm,
+        taula_predita
+    )
