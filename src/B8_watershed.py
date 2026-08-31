@@ -16,7 +16,7 @@ que estan connectades.
 
 import numpy as np
 from scipy import ndimage as ndi
-from skimage import feature,segmentation,measure
+from skimage import feature,segmentation
 
 
 def transformar_distancia(mascara):
@@ -46,13 +46,10 @@ def trobar_marcadors(distancia,mascara,distancia_minima=5):
         Si es molt petita podem detectar massa marcadors.
     """
 
-    mascara=mascara.astype(bool)
-
     coordenades=feature.peak_local_max(
         distancia,
         labels=mascara,
-        min_distance=distancia_minima,
-        exclude_border=False
+        min_distance=distancia_minima
     )
 
     # Creem una imatge buida per guardar els marcadors
@@ -63,39 +60,6 @@ def trobar_marcadors(distancia,mascara,distancia_minima=5):
     for i in range(len(coordenades)):
         fila,columna=coordenades[i]
         marcadors[fila,columna]=i+1
-
-    # Comprovem que cada component connectat tingui
-    # com a minim un marcador.
-    components=measure.label(
-        mascara,
-        connectivity=2
-    )
-
-    seguent_marcador=np.max(marcadors)+1
-
-    for etiqueta in range(1,np.max(components)+1):
-
-        component=components==etiqueta
-
-        # Si aquest component ja te algun marcador no fem res
-        if np.any(marcadors[component]>0):
-            continue
-
-        # Si no te marcador busquem el pixel mes interior
-        distancia_component=np.where(
-            component,
-            distancia,
-            -1
-        )
-
-        posicio=np.unravel_index(
-            np.argmax(distancia_component),
-            distancia.shape
-        )
-
-        marcadors[posicio]=seguent_marcador
-
-        seguent_marcador=seguent_marcador+1
 
     return marcadors
 
@@ -118,10 +82,6 @@ def aplicar_watershed(mascara,distancia_minima=5):
     """
 
     mascara=mascara.astype(bool)
-
-    # Si la mascara esta buida no podem aplicar watershed
-    if not np.any(mascara):
-        return np.zeros(mascara.shape,dtype=int)
 
     # Calculem la transformada de distancia
     distancia=transformar_distancia(mascara)
