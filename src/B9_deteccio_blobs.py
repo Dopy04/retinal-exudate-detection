@@ -20,18 +20,21 @@ from skimage.measure import label, regionprops
 from skimage.color import rgb2ycbcr
 
 
-# -------------------------------------------------------------------------
-# 1. Funcions petites
-# -------------------------------------------------------------------------
+# Funcions auxiliars
 
 def calcula_circularitat(area, perimetre):
     """
     Calcula si el blob es mes o menys circular.
+    
+    Un valor proper a 1 indica una forma semblant a un cercle,
     """
 
     if perimetre == 0:
         return 0
 
+    # La formula compara l'area real amb un cercle
+    # amb un perimetre equivalent.
+    
     circularitat = 4 * np.pi * area / (perimetre ** 2)
 
     return circularitat
@@ -39,7 +42,7 @@ def calcula_circularitat(area, perimetre):
 
 def calcula_ratio_eixos(eix_major, eix_menor):
     """
-    Calcula la relacio entre l'eix major i l'eix menor.
+    Calcula la relacio entre l'eix major i l'eix menor del blob.
     """
     
     #Evitem dividir entre 0
@@ -58,6 +61,7 @@ def mitjana_top25(canal, mascara_blob):
 
     valors = canal[mascara_blob]
 
+    # El percentil 75 separa el 25% de valors amb major intensitat.
     q75 = np.percentile(valors, 75)
     valors_alts = valors[valors >= q75]
 
@@ -108,7 +112,7 @@ def normalitza_bstar(b_lab):
 
 def calcula_solapament(mascara_blob, mascara_gt):
     """
-    Calcula quina part del blob coincideix amb la Groundtruth.
+    Calcula quina part del blob coincideix amb un exudat del Groundtruth.
     """
 
     area_blob = np.sum(mascara_blob)
@@ -122,6 +126,9 @@ def calcula_solapament(mascara_blob, mascara_gt):
 def calcula_etiqueta(solapament, llindar_positiu=0.30, llindar_negatiu=0.05):
     """
     Dona una etiqueta al blob segons el solapament amb la Groundtruth.
+    
+    Considerem +1 un blob amb prou solapament, -1 un pràcticament fora 
+    del Ground Truth i ambigu els casos intermedis.
     """
 
     if solapament >= llindar_positiu:
@@ -140,26 +147,14 @@ def calcula_etiqueta(solapament, llindar_positiu=0.30, llindar_negatiu=0.05):
 # 2. Features d'un blob
 # -------------------------------------------------------------------------
 
-def extreu_features_blob(
-    regio,
-    etiquetes,
-    canals,
-    y,
-    l_norm,
-    bstar,
-    mascara_gt,
-    nom_imatge,
-    nom_canal,
-    nom_metode,
-    llindar_positiu=0.30,
-    llindar_negatiu=0.05,
-):
-    """
-    Extreu les features d'un sol blob.
-    """
-
-    # Seleccionem nomes els pixels del blob actual.
-    mascara_blob = etiquetes == regio.label
+def extreu_features_blob(regio,etiquetes,canals,y,l_norm,bstar,mascara_gt, 
+                         nom_imatge,nom_canal,nom_metode,llindar_positiu=0.30, 
+                         llindar_negatiu=0.05): 
+    """ 
+    Calculem totes les features corresponents a un únic blob.
+    """ 
+    # Seleccionem només els pixels que pertanyen al blob actual. 
+    mascara_blob=etiquetes==regio.label
 
     # Canals que venen del preprocessament.
     g = canals[1]
@@ -173,10 +168,8 @@ def extreu_features_blob(
     area = regio.area
     perimetre = regio.perimeter
 
-    circularitat = calcula_circularitat(
-        area,
-        perimetre,
-    )
+    circularitat=calcula_circularitat(area,perimetre)
+    
 
     solidesa = regio.solidity
     eccentricitat = regio.eccentricity
@@ -185,15 +178,13 @@ def extreu_features_blob(
     eix_major = regio.major_axis_length
     eix_minor = regio.minor_axis_length
 
-    ratio_eixos = calcula_ratio_eixos(
-        eix_major,
-        eix_minor,
-    )
+    ratio_eixos=calcula_ratio_eixos(eix_major,eix_minor)
 
 
     #Calculem tots els paramteres de color i intensitat:
 
-
+    # Per cada canal guardem tant la mitjana com la desviacio estandard, 
+    # ja que ens interessa la intensitat però també la seva variacio.
     mean_g = np.mean(g[mascara_blob])
     std_g = np.std(g[mascara_blob])
 
@@ -213,8 +204,8 @@ def extreu_features_blob(
     std_bstar = np.std(bstar[mascara_blob])
 
 
-    # Percentils dins del blob:
-
+    # Afegim percentils per representar millor la distribucio 
+    #d'intensitats dins del blob i no dependre només de la mitjana.
 
     q25_g = np.percentile(g[mascara_blob], 25)
     q75_g = np.percentile(g[mascara_blob], 75)
@@ -224,20 +215,11 @@ def extreu_features_blob(
     q75_b = np.percentile(b[mascara_blob], 75)
     top25_b = mitjana_top25(b, mascara_blob)
 
-    # -------------------------
-    # Etiqueta amb ground truth
-    # -------------------------
+   
 
-    solapament = calcula_solapament(
-        mascara_blob,
-        mascara_gt,
-    )
-
-    etiqueta = calcula_etiqueta(
-        solapament,
-        llindar_positiu,
-        llindar_negatiu,
-    )
+    # Etiqueta del blob 
+    solapament=calcula_solapament(mascara_blob,mascara_gt) 
+    etiqueta=calcula_etiqueta(solapament,llindar_positiu,llindar_negatiu)
 
     fila = [
         nom_imatge,

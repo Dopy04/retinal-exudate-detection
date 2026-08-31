@@ -23,22 +23,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from src.metriques import calcular_metriques, imprimir_metriques, comparar_metodes
-from src.preprocessament_3 import preprocessa_imatge, visualitza_preprocessament
-from src.segmentacio import obtenir_mascares_baseline, segmentar_otsu
-from src.mejora_contraste_5 import millora_contrast, visualitza_contrast
-from src.nick_inrg import invertir_canal, segmentar_nick, segmentar_inrg
-from src.disc_optic import detecta_disc_optic, elimina_disc_optic
-from src.postprocessament import netejar_mascara
-from src.watershed import transformar_distancia, trobar_marcadors, aplicar_watershed
+from src.B1_metriques import calcular_metriques, imprimir_metriques, comparar_metodes
+from src.B2_preprocessament import preprocessa_imatge, visualitza_preprocessament
+from src.B3_segmentacio import obtenir_mascares_baseline, segmentar_otsu
+from src.B4_millora_contrast import millora_contrast, visualitza_contrast
+from src.B5_nick_inrg import invertir_canal, segmentar_nick, segmentar_inrg
+from src.B6_disc_optic import detecta_disc_optic, elimina_disc_optic
+from src.B7_postprocessament import netejar_mascara
+from src.B8_watershed import transformar_distancia, trobar_marcadors, aplicar_watershed
 
-from src.deteccio_blobs import (
+from src.B9_deteccio_blobs import (
     crea_taula_features,
     imprimeix_resum_features,
     ajunta_taules,
 )
 
-from src.classificador_SVM import (
+from src.B10_classificador_SVM import (
     separa_train_test_per_imatge,
     entrena_svm,
     imprimeix_features_seleccionades,
