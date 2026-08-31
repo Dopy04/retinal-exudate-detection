@@ -18,7 +18,10 @@ from src.nick_inrg import invertir_canal,segmentar_nick,segmentar_inrg
 from src.disc_optic import detecta_disc_optic,elimina_disc_optic
 from src.postprocessament import netejar_mascara
 from src.watershed import transformar_distancia,trobar_marcadors,aplicar_watershed
-
+from src.deteccio_blobs import crea_taula_features,imprimeix_resum_features,ajunta_taules
+from src.classificador_SVM import separa_train_test_per_imatge,entrena_svm
+from src.classificador_SVM import imprimeix_features_seleccionades,prediu_taula
+from src.classificador_SVM import avalua_prediccio_blobs,reconstrueix_mascara_svm
 # BLOC 2 - METRIQUES
 
 mascara_gt_prova=np.array([
@@ -1151,3 +1154,307 @@ for nom_imatge,nom_gt in imatges:
 
     plt.show()
     
+    
+    
+# ============================================================
+# BLOC 10 + 11 - FEATURES DE BLOBS + SVM
+# ============================================================
+
+print("\n====================================")
+print("BLOC 10 + 11 - FEATURES + SVM")
+print("====================================")
+
+
+# Guardarem les taules de features de totes les imatges.
+taules_features=[]
+
+# Guardem tambe les mascares i GT per reconstruir despres.
+mascares_candidats={}
+mascares_gt={}
+imatges_originals={}
+
+
+# ============================================================
+# PRIMER: CREEM FEATURES DE CADA IMATGE
+# ============================================================
+
+for nom_imatge,nom_gt in imatges:
+
+    print("\n----------------------------------")
+    print("BLOC 10 - FEATURES:",nom_imatge)
+    print("----------------------------------")
+
+    ruta_imatge=ruta_dades/nom_imatge
+    ruta_gt=ruta_dades/nom_gt
+
+
+    # --------------------------------------------------------
+    # PREPROCESSAMENT
+    # --------------------------------------------------------
+
+    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
+        ruta_imatge,
+        ruta_gt
+    )
+
+    canal_r=canals[0]
+    canal_g=canals[1]
+
+
+    # --------------------------------------------------------
+    # MASCARA CANDIDATA
+    # --------------------------------------------------------
+    # Per a la primera prova del SVM usem la branca que ja teniem:
+    #
+    # G original -> Otsu -> disc optic -> morfologia -> Watershed
+    #
+    # Aquesta mascara NO es encara el resultat final.
+    # Es una mascara de candidats que el SVM intentara filtrar.
+
+    mascara_otsu=segmentar_otsu(
+        canal_g,
+        mascara_retina
+    )
+
+
+    # --------------------------------------------------------
+    # DISC OPTIC
+    # --------------------------------------------------------
+
+    r_suau,r_candidats,disc_r=detecta_disc_optic(
+        canal_r,
+        mascara_retina,
+        radi_tancament=4,
+        radi_dilatacio=3
+    )
+
+    mascara_sense_disc=elimina_disc_optic(
+        mascara_otsu,
+        disc_r
+    )
+
+
+    # --------------------------------------------------------
+    # MORFOLOGIA
+    # --------------------------------------------------------
+    # Ara mantenim la mateixa configuracio que teniem al Bloc 9.
+    # Mes endavant podem provar mida_minima=10 i mida_forat=20.
+
+    mascara_morfologia=netejar_mascara(
+        mascara_sense_disc,
+        mida_minima=50,
+        mida_forat=50
+    )
+
+
+    # --------------------------------------------------------
+    # WATERSHED
+    # --------------------------------------------------------
+
+    etiquetes_ws=aplicar_watershed(
+        mascara_morfologia,
+        distancia_minima=5
+    )
+
+    mascara_watershed=etiquetes_ws>0
+
+
+    # --------------------------------------------------------
+    # BLOC 10 - FEATURES
+    # --------------------------------------------------------
+
+    taula=crea_taula_features(
+        imatge,
+        canals,
+        mascara_watershed,
+        mascara_gt,
+        nom_imatge=nom_imatge,
+        nom_canal="G original",
+        nom_metode="Otsu + OD + morfologia + WS",
+        llindar_positiu=0.30,
+        llindar_negatiu=0.05
+    )
+
+    imprimeix_resum_features(
+        taula,
+        nom_imatge
+    )
+
+    taules_features.append(taula)
+
+    # Guardem coses per reconstruir la mascara despres del SVM.
+    mascares_candidats[nom_imatge]=mascara_watershed
+    mascares_gt[nom_imatge]=mascara_gt
+    imatges_originals[nom_imatge]=imatge
+
+
+# ============================================================
+# SEGON: AJUNTEM TOTES LES TAULES
+# ============================================================
+
+taula_total=ajunta_taules(
+    taules_features
+)
+
+print("\n====================================")
+print("TAULA TOTAL FEATURES")
+print("====================================")
+
+print("Nombre total de blobs:",len(taula_total))
+
+print("Positius totals:",np.sum(taula_total["etiqueta"]==1))
+print("Negatius totals:",np.sum(taula_total["etiqueta"]==0))
+print("Ambigus totals:",np.sum(taula_total["etiqueta"]==-1))
+
+
+# ============================================================
+# TERCER: SEPAREM TRAIN I TEST PER IMATGE
+# ============================================================
+
+# Per fer una primera prova, deixem una imatge per test.
+# Pots canviar aquesta llista per provar una altra.
+imatges_test=[
+    "Exudate_DR2019_003.jpg"
+]
+
+taula_train,taula_test=separa_train_test_per_imatge(
+    taula_total,
+    imatges_test
+)
+
+print("\n====================================")
+print("SEPARACIO TRAIN / TEST")
+print("====================================")
+
+print("Imatges test:",imatges_test)
+print("Blobs train:",len(taula_train))
+print("Blobs test:",len(taula_test))
+
+print("Train positius:",np.sum(taula_train["etiqueta"]==1))
+print("Train negatius:",np.sum(taula_train["etiqueta"]==0))
+print("Train ambigus:",np.sum(taula_train["etiqueta"]==-1))
+
+print("Test positius:",np.sum(taula_test["etiqueta"]==1))
+print("Test negatius:",np.sum(taula_test["etiqueta"]==0))
+print("Test ambigus:",np.sum(taula_test["etiqueta"]==-1))
+
+
+# ============================================================
+# QUART: ENTRENEM EL SVM
+# ============================================================
+
+# k_chi2=3 segueix la idea inicial de la revisio avançada:
+# començar amb poques features seleccionades.
+escalador,selector,model=entrena_svm(
+    taula_train,
+    k_chi2=3
+)
+
+imprimeix_features_seleccionades(
+    selector
+)
+
+
+# ============================================================
+# CINQUE: AVALUEM EL SVM A NIVELL DE BLOBS
+# ============================================================
+
+taula_test_predita=prediu_taula(
+    taula_test,
+    escalador,
+    selector,
+    model
+)
+
+avalua_prediccio_blobs(
+    taula_test_predita
+)
+
+
+# ============================================================
+# SISE: RECONSTRUIM MASCARES I COMPAREM AMB GT
+# ============================================================
+
+for nom_test in imatges_test:
+
+    print("\n----------------------------------")
+    print("RESULTAT SVM:",nom_test)
+    print("----------------------------------")
+
+    mascara_candidata=mascares_candidats[nom_test]
+    mascara_gt=mascares_gt[nom_test]
+    imatge=imatges_originals[nom_test]
+
+    # Agafem nomes els blobs de la imatge de test actual.
+    taula_imatge=taula_test_predita[
+        taula_test_predita["nom_imatge"]==nom_test
+    ]
+
+    # Reconstruim la mascara final deixant nomes els blobs
+    # que el SVM ha classificat com exsudat.
+    mascara_svm=reconstrueix_mascara_svm(
+        mascara_candidata,
+        taula_imatge
+    )
+
+
+    # --------------------------------------------------------
+    # METRIQUES ABANS I DESPRES DEL SVM
+    # --------------------------------------------------------
+
+    metriques_abans=calcular_metriques(
+        mascara_candidata,
+        mascara_gt
+    )
+
+    metriques_despres=calcular_metriques(
+        mascara_svm,
+        mascara_gt
+    )
+
+    imprimir_metriques(
+        "Abans SVM",
+        metriques_abans
+    )
+
+    imprimir_metriques(
+        "Despres SVM",
+        metriques_despres
+    )
+
+
+    # --------------------------------------------------------
+    # VISUALITZACIO
+    # --------------------------------------------------------
+    # Mantenim la representacio de les proves:
+    # Ground Truth en gris i mascara obtinguda en verd.
+
+    plt.figure(figsize=(14,5))
+
+    plt.suptitle(
+        "BLOC 11 - SVM - "+nom_test,
+        fontsize=16
+    )
+
+    plt.subplot(1,3,1)
+    plt.imshow(imatge)
+    plt.title("Original")
+    plt.axis("off")
+
+    plt.subplot(1,3,2)
+    plt.imshow(mascara_gt,cmap="gray",alpha=1)
+    plt.imshow(mascara_candidata,cmap="Greens",alpha=0.5)
+    plt.title("Abans SVM")
+    plt.axis("off")
+
+    plt.subplot(1,3,3)
+    plt.imshow(mascara_gt,cmap="gray",alpha=1)
+    plt.imshow(mascara_svm,cmap="Greens",alpha=0.5)
+    plt.title("Despres SVM")
+    plt.axis("off")
+
+    plt.tight_layout(
+        rect=[0,0,1,0.90]
+    )
+
+    plt.show()
