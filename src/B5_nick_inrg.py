@@ -215,3 +215,11 @@ if __name__=="__main__":
 
     plt.tight_layout(rect=[0,0,1,0.92])
     plt.show()
+    
+
+# Ús d'IA:
+# En aquest bloc el metode s'ha implementat a partir del paper del 2022.
+# Nosaltres l'hem simplificat i adaptat al nostre cas, ja que treballem
+# només amb exsudats.
+# La IA s'ha utilitzat principalment per comprovar que aquesta simplificació
+# mantingués el funcionament general del metode original.

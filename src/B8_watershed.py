@@ -183,3 +183,9 @@ if __name__=="__main__":
 
     plt.tight_layout(rect=[0,0,1,0.92])
     plt.show()
+    
+# Ús d'IA:
+# Hem utilitzat IA com a suport per entendre millor el funcionament de Watershed,
+# sobretot la transformada de distancia i l'ús dels marcadors per separar blobs.
+# A partir d'aixo hem adaptat el metode a les mascares del nostre projecte
+# i hem comprovat que la separació de regions funcionés correctament.

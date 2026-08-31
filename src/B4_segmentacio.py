@@ -408,3 +408,11 @@ if __name__=="__main__":
 
     plt.tight_layout(rect=[0,0,1,0.94])
     plt.show()
+    
+
+# Ús d'IA:
+# Hem utilitzat IA principalment per entendre millor la segmentació amb Sauvola
+# i per ajustar els paràmetres del mètode adaptatiu fins trobar una configuració
+# que funcionés millor amb les nostres imatges.
+# L'ús ha estat sobretot com ajuda per entendre el metode i poder implementar
+# un codi funcional adaptat al nostre cas.
