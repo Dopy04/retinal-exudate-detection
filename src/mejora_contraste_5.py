@@ -33,20 +33,7 @@ def prepara_canal(canal,mascara_retina):
 
     canal_preparat=np.copy(canal).astype(np.float64)
 
-    if mascara_retina is None:
-        return np.clip(canal_preparat,0.0,1.0)
-
-    if canal.shape!=mascara_retina.shape:
-        raise ValueError(
-            "El canal i la mascara de retina no tenen la mateixa mida"
-        )
-
-    valors=canal_preparat[mascara_retina]
-
-    if valors.size==0:
-        return np.zeros_like(canal_preparat)
-
-    valor_fons=np.median(valors)
+    valor_fons=np.median(canal_preparat[mascara_retina])
 
     canal_preparat[~mascara_retina]=valor_fons
 
@@ -149,23 +136,9 @@ def aplica_kmmrc(imatge_retina,mascara_retina,k=5,beta=1.5):
     # Agafem nomes els pixels que estan dins de la retina
     valors_v=v[mascara_retina].reshape(-1,1)
 
-    if valors_v.size==0:
-        return v_nou,np.copy(imatge_retina)
-
-    # Evitem problemes si tenim menys intensitats diferents que clusters
-    valors_unics=np.unique(valors_v)
-
-    k_real=min(
-        k,
-        len(valors_unics)
-    )
-
-    if k_real<2:
-        return v,np.copy(imatge_retina)
-
     # K-means separa les intensitats en k grups
     model=KMeans(
-        n_clusters=k_real,
+        n_clusters=k,
         random_state=0,
         n_init=10
     )
@@ -178,14 +151,11 @@ def aplica_kmmrc(imatge_retina,mascara_retina,k=5,beta=1.5):
     valors_v_nous=np.copy(valors_v)
 
     # Processem cada cluster per separat
-    for i in range(k_real):
+    for i in range(k):
 
         posicions=etiquetes==i
 
         valors_regio=valors_v[posicions]
-
-        if valors_regio.size==0:
-            continue
 
         mitjana=np.mean(valors_regio)
 
@@ -207,7 +177,7 @@ def aplica_kmmrc(imatge_retina,mascara_retina,k=5,beta=1.5):
     v_nou[~mascara_retina]=0
 
     # Reconstruim HSV
-    hsv_nou=np.copy(hsv)
+    hsv_nou=np.zeros_like(hsv)
 
     hsv_nou[:,:,0]=h
     hsv_nou[:,:,1]=s
@@ -250,10 +220,9 @@ def millora_contrast(imatge_retina,mascara_retina,canals):
         [3] b_clahe
         [4] v_clahe
         [5] v_kmmrc
-        [6] g_kmmrc
-        [7] g_kmmrc_clahe
-        [8] g_kmmrc_clahe_filtrat
-        [9] imatge_kmmrc
+        [6] v_kmmrc_clahe
+        [7] v_kmmrc_clahe_filtrat
+        [8] imatge_kmmrc
     """
 
     g=canals[1]
@@ -294,21 +263,15 @@ def millora_contrast(imatge_retina,mascara_retina,canals):
         mascara_retina
     )
 
-    # Despres de KMMRC el paper torna a RGB
-    # i treballa amb el canal verd de la nova imatge
-    g_kmmrc=imatge_kmmrc[:,:,1]
-
-    g_kmmrc[~mascara_retina]=0
-
-    # CLAHE sobre el canal G obtingut despres de KMMRC
-    g_kmmrc_clahe=aplica_clahe(
-        g_kmmrc,
+    # CLAHE sobre el resultat KMMRC
+    v_kmmrc_clahe=aplica_clahe(
+        v_kmmrc,
         mascara_retina
     )
 
     # Filtre de mitjana final
-    g_kmmrc_clahe_filtrat=filtrar_mitjana(
-        g_kmmrc_clahe,
+    v_kmmrc_clahe_filtrat=filtrar_mitjana(
+        v_kmmrc_clahe,
         mascara_retina,
         mida=5
     )
@@ -320,9 +283,8 @@ def millora_contrast(imatge_retina,mascara_retina,canals):
         b_clahe,
         v_clahe,
         v_kmmrc,
-        g_kmmrc,
-        g_kmmrc_clahe,
-        g_kmmrc_clahe_filtrat,
+        v_kmmrc_clahe,
+        v_kmmrc_clahe_filtrat,
         imatge_kmmrc
     )
 
@@ -338,14 +300,14 @@ def visualitza_contrast(imatge_retina,canals,contrast,titol):
 
     g=canals[1]
     luma=canals[3]
+    v=canals[6]
 
     luma_clahe=contrast[1]
     g_clahe=contrast[2]
-
+    v_clahe=contrast[4]
     v_kmmrc=contrast[5]
-    g_kmmrc=contrast[6]
-    g_kmmrc_clahe=contrast[7]
-    g_kmmrc_clahe_filtrat=contrast[8]
+    v_kmmrc_clahe=contrast[6]
+    v_kmmrc_clahe_filtrat=contrast[7]
 
     plt.figure(figsize=(14,10))
 
@@ -384,31 +346,31 @@ def visualitza_contrast(imatge_retina,canals,contrast,titol):
     plt.title("Luma CLAHE")
     plt.axis("off")
 
-    # V KMMRC
+    # V amb CLAHE
     plt.subplot(3,3,6)
+    plt.imshow(v_clahe,cmap="gray")
+    plt.title("V CLAHE")
+    plt.axis("off")
+
+    # KMMRC
+    plt.subplot(3,3,7)
     plt.imshow(v_kmmrc,cmap="gray")
     plt.title("V KMMRC")
     plt.axis("off")
 
-    # G despres de KMMRC
-    plt.subplot(3,3,7)
-    plt.imshow(g_kmmrc,cmap="gray")
-    plt.title("G KMMRC")
-    plt.axis("off")
-
-    # KMMRC + G + CLAHE
+    # KMMRC + CLAHE
     plt.subplot(3,3,8)
-    plt.imshow(g_kmmrc_clahe,cmap="gray")
-    plt.title("G KMMRC + CLAHE")
+    plt.imshow(v_kmmrc_clahe,cmap="gray")
+    plt.title("KMMRC + CLAHE")
     plt.axis("off")
 
-    # KMMRC + G + CLAHE + filtre
+    # KMMRC + CLAHE + filtre
     plt.subplot(3,3,9)
     plt.imshow(
-        g_kmmrc_clahe_filtrat,
+        v_kmmrc_clahe_filtrat,
         cmap="gray"
     )
-    plt.title("KMMRC + G + CLAHE + filtre")
+    plt.title("KMMRC + CLAHE + filtre")
     plt.axis("off")
 
     plt.tight_layout(
