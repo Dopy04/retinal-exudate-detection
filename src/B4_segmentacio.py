@@ -323,51 +323,53 @@ def obtenir_mascares_baseline(canal,mascara_retina=None):
 if __name__=="__main__":
 
     #Prova Bloc 4: utilitzem una imatge del dataset per comprovar
-    #els diferents metodes de segmentacio i comparar les seves metriques
+    #visualment els diferents metodes de segmentacio i les seves metriques
 
-    from pathlib import Path
-    import matplotlib.pyplot as plt
     import B2_preprocessament as prep
     from B1_metriques import comparar_metodes,imprimir_metriques
 
-    #Imatge que utilitzem per la prova
-    #Per provar una altra només cal canviar aquests dos noms
-    nom_imatge="Exudate_DR2019_003.jpg"
-    nom_gt="Exudate_DR2019_003_Groundtruth.jpg"
+    #Escollim el dataset i la imatge que volem provar
+    #Per provar una altra només cal canviar aquests dos valors
+    dataset="DR2019"
+    numero=3
 
     ruta_projecte=Path(__file__).resolve().parent.parent
     ruta_dades=ruta_projecte/"data_samples"
 
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
+    #Obtenim automaticament la imatge i el seu Ground Truth
+    ruta_imatge,ruta_gt=prep.obtenir_rutes_dataset(
+        ruta_dades,dataset,numero)
 
-    #Fem el preprocessament per obtenir la imatge, el Ground Truth,
+    #Fem el preprocessament per obtenir la imatge,el Ground Truth,
     #la mascara de retina i els diferents canals
     imatge,mascara_gt,mascara_retina,imatge_retina,canals=prep.preprocessa_imatge(
         ruta_imatge,ruta_gt)
 
-    #Utilitzem el canal G que és el que ens ha donat millors
-    #resultats en la segmentacio basica
+    #Utilitzem el canal G perquè és el que ens ha donat millors
+    #resultats per la segmentacio basica
     canal_g=canals[1]
 
-    #Apliquem tots els metodes del bloc sobre la mateixa imatge
+    #Apliquem tots els metodes del Bloc 4 sobre la mateixa imatge
     mascares=obtenir_mascares_baseline(canal_g,mascara_retina)
 
-    #Calculem les metriques de cada metode respecte el Ground Truth
+    #Calculem les metriques de cada metode
     resultats=comparar_metodes(mascares,mascara_gt)
 
     print("\n======================================")
     print("PROVA BLOC 4")
-    print("Imatge:",nom_imatge)
+    print("Dataset:",dataset)
+    print("Imatge:",str(numero).zfill(3))
     print("======================================")
 
     for nom_metode in resultats:
         imprimir_metriques(nom_metode,resultats[nom_metode])
 
-    #Mostrem la imatge original, el Ground Truth i les segmentacions
+    #Mostrem la imatge original,el Ground Truth i les segmentacions
     #per poder comparar visualment els diferents metodes
     plt.figure(figsize=(16,8))
-    plt.suptitle("PROVA BLOC 4 - "+nom_imatge,fontsize=16)
+    plt.suptitle(
+        "PROVA BLOC 4 - "+dataset+" "+str(numero).zfill(3),
+        fontsize=16)
 
     plt.subplot(2,4,1)
     plt.imshow(imatge)

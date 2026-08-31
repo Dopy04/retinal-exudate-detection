@@ -105,16 +105,17 @@ if __name__=="__main__":
     from B7_postprocessament import netejar_mascara
     from B1_metriques import calcular_metriques,imprimir_metriques
 
-    #Imatge que utilitzem per la prova
-    #Per provar una altra només cal canviar aquests dos noms
-    nom_imatge="Exudate_DR2019_003.jpg"
-    nom_gt="Exudate_DR2019_003_Groundtruth.jpg"
+    #Escollim el dataset i la imatge que volem provar
+    #Per provar una altra només cal canviar aquests dos valors
+    dataset="DR2019"
+    numero=3
 
     ruta_projecte=Path(__file__).resolve().parent.parent
     ruta_dades=ruta_projecte/"data_samples"
 
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
+    #Obtenim automaticament la imatge i el seu Ground Truth
+    ruta_imatge,ruta_gt=prep.obtenir_rutes_dataset(
+        ruta_dades,dataset,numero)
 
     #Fem el preprocessament i obtenim el canal verd
     imatge,mascara_gt,mascara_retina,imatge_retina,canals=prep.preprocessa_imatge(
@@ -122,33 +123,48 @@ if __name__=="__main__":
 
     canal_g=canals[1]
 
-    #Fem una segmentacio inicial amb Otsu i després la netegem
-    #amb la morfologia abans d'aplicar Watershed
-    mascara_otsu=segmentar_otsu(canal_g,mascara_retina)
+    #Fem primer una segmentacio amb Otsu i apliquem la morfologia
+    #per obtenir la mascara que entrarà al Watershed
+    mascara_otsu=segmentar_otsu(
+        canal_g,
+        mascara_retina)
+
     mascara_morfologia=netejar_mascara(mascara_otsu)
 
-    #Apliquem Watershed i obtenim una etiqueta diferent per cada blob
+    #Apliquem Watershed per separar els blobs que estan connectats
     etiquetes=aplicar_watershed(mascara_morfologia)
 
-    #Per calcular les metriques tornem a convertir les etiquetes
-    #en una mascara binaria
+    #Cada valor diferent de zero representa un blob
+    nombre_blobs=np.max(etiquetes)
+
+    #Per comparar amb el Ground Truth tornem les etiquetes
+    #a una mascara binaria
     mascara_watershed=etiquetes>0
 
-    metriques_abans=calcular_metriques(mascara_morfologia,mascara_gt)
-    metriques_despres=calcular_metriques(mascara_watershed,mascara_gt)
+    metriques_abans=calcular_metriques(
+        mascara_morfologia,
+        mascara_gt)
+
+    metriques_despres=calcular_metriques(
+        mascara_watershed,
+        mascara_gt)
 
     print("\n======================================")
     print("PROVA BLOC 8")
-    print("Imatge:",nom_imatge)
-    print("Nombre de blobs:",np.max(etiquetes))
+    print("Dataset:",dataset)
+    print("Imatge:",str(numero).zfill(3))
+    print("Nombre de blobs:",nombre_blobs)
     print("======================================")
 
     imprimir_metriques("Abans Watershed",metriques_abans)
     imprimir_metriques("Despres Watershed",metriques_despres)
 
-    #Mostrem el resultat abans i després de separar els blobs
+    #Mostrem la mascara abans del Watershed i els blobs
+    #separats amb una etiqueta diferent
     plt.figure(figsize=(16,7))
-    plt.suptitle("PROVA BLOC 8 - "+nom_imatge,fontsize=16)
+    plt.suptitle(
+        "PROVA BLOC 8 - "+dataset+" "+str(numero).zfill(3),
+        fontsize=16)
 
     plt.subplot(1,4,1)
     plt.imshow(imatge)

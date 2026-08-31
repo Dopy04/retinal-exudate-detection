@@ -127,66 +127,66 @@ def segmentar_inrg(canal,mascara_retina=None,mida_finestra=95,k=-0.2,
             break
 
     return mascara
-
 if __name__=="__main__":
 
     #Prova Bloc 5: apliquem NICK i INRG sobre una imatge real
-    #per veure visualment les regions que detecta cada metode
+    #per comparar visualment les regions que detecta cada metode
 
     from pathlib import Path
     import matplotlib.pyplot as plt
     import B2_preprocessament as prep
     from B1_metriques import calcular_metriques,imprimir_metriques
 
-    #Imatge que utilitzem per la prova
-    #Per provar una altra només cal canviar aquests dos noms
-    nom_imatge="Exudate_DR2019_003.jpg"
-    nom_gt="Exudate_DR2019_003_Groundtruth.jpg"
+    #Escollim el dataset i la imatge que volem provar
+    #Per provar una altra només cal canviar aquests dos valors
+    dataset="DR2019"
+    numero=3
 
     ruta_projecte=Path(__file__).resolve().parent.parent
     ruta_dades=ruta_projecte/"data_samples"
 
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
+    #Obtenim automaticament la imatge i el seu Ground Truth
+    ruta_imatge,ruta_gt=prep.obtenir_rutes_dataset(
+        ruta_dades,dataset,numero)
 
-    #Fem el preprocessament per obtenir la imatge, el Ground Truth,
-    #la mascara de retina i els canals
+    #Fem el preprocessament i obtenim els diferents canals
     imatge,mascara_gt,mascara_retina,imatge_retina,canals=prep.preprocessa_imatge(
-        ruta_imatge,
-        ruta_gt)
+        ruta_imatge,ruta_gt)
 
-    #Utilitzem el canal verd, que és el que estem utilitzant
-    #per la segmentacio dels exsudats
+    #Utilitzem el canal G per aplicar NICK i INRG
     canal_g=canals[1]
 
-    #NICK necessita treballar amb el canal invertit perquè els
-    #exsudats passin de ser zones brillants a zones fosques
+    #NICK treballa amb el canal invertit perquè els exsudats
+    #passin de ser regions brillants a regions fosques
     canal_invertit=invertir_canal(canal_g)
 
     mascara_nick=segmentar_nick(
         canal_invertit,
         mascara_retina)
 
-    #INRG rep el canal original perquè ja fa la inversió internament
+    #INRG rep el canal original perquè ja fa la inversio internament
     mascara_inrg=segmentar_inrg(
         canal_g,
         mascara_retina)
 
-    #Calculem les metriques comparant les dues mascares amb el Ground Truth
+    #Calculem les metriques dels dos metodes
     metriques_nick=calcular_metriques(mascara_nick,mascara_gt)
     metriques_inrg=calcular_metriques(mascara_inrg,mascara_gt)
 
     print("\n======================================")
     print("PROVA BLOC 5")
-    print("Imatge:",nom_imatge)
+    print("Dataset:",dataset)
+    print("Imatge:",str(numero).zfill(3))
     print("======================================")
 
     imprimir_metriques("NICK",metriques_nick)
     imprimir_metriques("INRG",metriques_inrg)
 
-    #Mostrem la imatge original i els diferents passos de la segmentacio
+    #Mostrem la imatge original,el canal invertit i les dues segmentacions
     plt.figure(figsize=(16,7))
-    plt.suptitle("PROVA BLOC 5 - "+nom_imatge,fontsize=16)
+    plt.suptitle(
+        "PROVA BLOC 5 - "+dataset+" "+str(numero).zfill(3),
+        fontsize=16)
 
     plt.subplot(1,5,1)
     plt.imshow(imatge)

@@ -121,34 +121,39 @@ def netejar_mascara(mascara,mida_minima=50,mida_forat=50):
 
 if __name__=="__main__":
 
-    #Prova Bloc 7:Apliquem la morfologia sobre una mascara obtinguda
+    #Prova Bloc 7: apliquem la morfologia sobre una mascara obtinguda
     #amb Otsu per veure com canvia abans i després de la neteja
 
+    from pathlib import Path
+    import matplotlib.pyplot as plt
     import B2_preprocessament as prep
     from B3_segmentacio import segmentar_otsu
     from B1_metriques import calcular_metriques,imprimir_metriques
 
-    #Imatge que utilitzem per la prova
-    #Per provar una altra només cal canviar aquests dos noms
-    nom_imatge="Exudate_DR2019_003.jpg"
-    nom_gt="Exudate_DR2019_003_Groundtruth.jpg"
+    #Escollim el dataset i la imatge que volem provar
+    #Per provar una altra només cal canviar aquests dos valors
+    dataset="DR2019"
+    numero=3
 
     ruta_projecte=Path(__file__).resolve().parent.parent
     ruta_dades=ruta_projecte/"data_samples"
 
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
+    #Obtenim automaticament la imatge i el seu Ground Truth
+    ruta_imatge,ruta_gt=prep.obtenir_rutes_dataset(
+        ruta_dades,dataset,numero)
 
-    #Fem el preprocessament i agafem el canal G
+    #Fem el preprocessament i obtenim el canal verd
     imatge,mascara_gt,mascara_retina,imatge_retina,canals=prep.preprocessa_imatge(
         ruta_imatge,ruta_gt)
 
     canal_g=canals[1]
 
-    #Obtenim una mascara inicial amb Otsu
-    mascara_otsu=segmentar_otsu(canal_g,mascara_retina)
+    #Fem una segmentacio inicial amb Otsu
+    mascara_otsu=segmentar_otsu(
+        canal_g,
+        mascara_retina)
 
-    #Apliquem el nostre proces de morfologia
+    #Apliquem les operacions morfologiques sobre la mascara
     mascara_morfologia=netejar_mascara(mascara_otsu)
 
     #Calculem les metriques abans i després de la morfologia
@@ -157,15 +162,18 @@ if __name__=="__main__":
 
     print("\n======================================")
     print("PROVA BLOC 7")
-    print("Imatge:",nom_imatge)
+    print("Dataset:",dataset)
+    print("Imatge:",str(numero).zfill(3))
     print("======================================")
 
-    imprimir_metriques("Otsu abans morfologia",metriques_abans)
-    imprimir_metriques("Otsu despres morfologia",metriques_despres)
+    imprimir_metriques("Abans morfologia",metriques_abans)
+    imprimir_metriques("Despres morfologia",metriques_despres)
 
-    #Mostrem visualment l'efecte de la morfologia
+    #Mostrem visualment l'efecte de les operacions morfologiques
     plt.figure(figsize=(14,6))
-    plt.suptitle("PROVA BLOC 7 - "+nom_imatge,fontsize=16)
+    plt.suptitle(
+        "PROVA BLOC 7 - "+dataset+" "+str(numero).zfill(3),
+        fontsize=16)
 
     plt.subplot(1,4,1)
     plt.imshow(imatge)

@@ -197,6 +197,45 @@ def preprocessa_imatge(ruta_imatge, ruta_mascara):
     return imatge, mascara_gt, mascara_retina, imatge_retina, canals
 
 
+
+def obtenir_rutes_dataset(ruta_dades,dataset,numero):
+    """
+    Aquesta funcio ens permet seleccionar una imatge i el seu Ground Truth
+    indicant només el dataset i el numero de la imatge.
+
+    Els datasets disponibles són DR2019 i JSIEC.
+    """
+
+    ruta_dades=Path(ruta_dades)
+
+    #Convertim el numero al format dels fitxers: 1->001, 3->003...
+    numero=str(numero).zfill(3)
+    nom_fitxer=numero+".jpg"
+
+    #Seleccionem les carpetes segons el dataset que volem utilitzar
+    if dataset=="DR2019":
+        carpeta_imatges=ruta_dades/"Exudate-DR2019"
+        carpeta_gt=ruta_dades/"Exudate-DR2019-Groundtruth"
+
+    elif dataset=="JSIEC":
+        carpeta_imatges=ruta_dades/"Exudate-JSIEC"
+        carpeta_gt=ruta_dades/"Exudate-JSIEC-Groundtruth"
+
+    else:
+        raise ValueError("El dataset ha de ser DR2019 o JSIEC")
+
+    ruta_imatge=carpeta_imatges/nom_fitxer
+    ruta_gt=carpeta_gt/nom_fitxer
+
+    #Comprovem que existeixin tant la imatge com el Ground Truth
+    if not ruta_imatge.exists():
+        raise FileNotFoundError("No s'ha trobat la imatge: "+str(ruta_imatge))
+
+    if not ruta_gt.exists():
+        raise FileNotFoundError("No s'ha trobat el Ground Truth: "+str(ruta_gt))
+
+    return ruta_imatge,ruta_gt
+
 # -------------------------------------------------------------------------
 # 5. Visualització bàsica
 # -------------------------------------------------------------------------
