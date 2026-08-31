@@ -1164,7 +1164,7 @@ for nom_imatge,nom_gt in imatges:
 
     plt.show()
     
-<<<<<<< HEAD
+
 # ============================================================
 # BLOC 10 - FEATURES DELS BLOBS
 # PROVA DELS DOS PIPELINES
@@ -1195,7 +1195,7 @@ for nom_imatge,nom_gt in imatges:
 
     ruta_imatge = ruta_dades/nom_imatge
     ruta_gt = ruta_dades/nom_gt
-=======
+
     
     
 # ============================================================
@@ -1860,12 +1860,12 @@ for nom_test in imatges_test:
     )
 
     metriques_despres=calcular_metriques(
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
+
         mascara_svm,
         mascara_gt
     )
 
-<<<<<<< HEAD
+
 
     print("\nMETRIQUES ABANS DEL SVM")
 
@@ -1919,7 +1919,7 @@ for nom_test,nom_gt in imatges:
         nom_test,
 
         "PIPELINE A - OTSU"
-=======
+
     imprimir_metriques(
         "Abans SVM",
         metriques_abans
@@ -1927,13 +1927,12 @@ for nom_test,nom_gt in imatges:
 
     imprimir_metriques(
         "Despres SVM",
-        metriques_despres
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
+        metriques_despres>>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
     )
 
 
     # --------------------------------------------------------
-<<<<<<< HEAD
+
     # PIPELINE B
     # --------------------------------------------------------
 
@@ -2106,7 +2105,7 @@ for nom_test,nom_gt in imatges:
 
     plt.show()
     
-=======
+
     # VISUALITZACIO
     # --------------------------------------------------------
     # Mantenim la representacio de les proves:
@@ -2141,4 +2140,4 @@ for nom_test,nom_gt in imatges:
     )
 
     plt.show()
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
+
