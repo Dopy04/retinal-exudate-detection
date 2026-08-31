@@ -4,21 +4,20 @@ Created on Fri Aug 21 17:56:30 2026
 
 @author: gurpi
 """
-
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from src.metriques import calcular_metriques,imprimir_metriques,comparar_metodes
-from src.preprocessament_3 import preprocessa_imatge,visualitza_preprocessament
+from src.metriques import calcular_metriques, imprimir_metriques, comparar_metodes
+from src.preprocessament_3 import preprocessa_imatge, visualitza_preprocessament
 from src.segmentacio import obtenir_mascares_baseline
-from src.mejora_contraste_5 import millora_contrast,visualitza_contrast
+from src.mejora_contraste_5 import millora_contrast, visualitza_contrast
 from src.segmentacio import segmentar_otsu
-from src.nick_inrg import invertir_canal,segmentar_nick,segmentar_inrg
-from src.disc_optic import detecta_disc_optic,elimina_disc_optic
+from src.nick_inrg import invertir_canal, segmentar_nick, segmentar_inrg
+from src.disc_optic import detecta_disc_optic, elimina_disc_optic
 from src.postprocessament import netejar_mascara
-from src.watershed import transformar_distancia,trobar_marcadors,aplicar_watershed
-<<<<<<< HEAD
+from src.watershed import transformar_distancia, trobar_marcadors, aplicar_watershed
+
 from src.deteccio_blobs import (
     crea_taula_features,
     imprimeix_resum_features,
@@ -33,14 +32,6 @@ from src.classificador_SVM import (
     avalua_prediccio_blobs,
     reconstrueix_mascara_svm
 )
-
-
-=======
-from src.deteccio_blobs import crea_taula_features,imprimeix_resum_features,ajunta_taules
-from src.classificador_SVM import separa_train_test_per_imatge,entrena_svm
-from src.classificador_SVM import imprimeix_features_seleccionades,prediu_taula
-from src.classificador_SVM import avalua_prediccio_blobs,reconstrueix_mascara_svm
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
 # BLOC 2 - METRIQUES
 
 mascara_gt_prova=np.array([

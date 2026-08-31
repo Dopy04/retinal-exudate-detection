@@ -21,14 +21,11 @@ Pipeline:
         ↓
     reconstruccio de la mascara
 """
-
 import numpy as np
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.svm import SVC
-
-<<<<<<< HEAD
 from sklearn.metrics import (
     precision_score,
     recall_score,
@@ -36,8 +33,6 @@ from sklearn.metrics import (
     accuracy_score
 )
 
-=======
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
 from src.deteccio_blobs import columnes_svm
 
 
