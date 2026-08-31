@@ -16,6 +16,7 @@ from scipy.ndimage import gaussian_filter
 from skimage.morphology import remove_small_objects,remove_small_holes,closing,dilation,disk
 from skimage.measure import label,regionprops
 
+
 #Aquests paràmetres a la funció s'han triat de manera experimental i a partir
 #de paràmetres propers al q podriem esperar
 def detecta_disc_optic(canal_od, mascara_retina, percentil=98,
@@ -107,3 +108,9 @@ def elimina_disc_optic(mascara_candidats,mascara_disc):
 
     return mascara_sense_disc
 
+
+#Comentari IA:
+# Hem utilitzat IA com a suport per entendre com aplicar l'algoritme per detectar
+# el disc òptic, separar regions entre elles i escollir una regió calculant 
+#una puntuacio per cada regio, afavorint les que tenen una area gran i una forma 
+#compacta. (línies 63-90)

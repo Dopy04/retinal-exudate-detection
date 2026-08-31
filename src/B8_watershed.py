@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Thu Aug 27 23:27:08 2026
-
-@author: gurpi
-"""
 
 """
 Bloc 8:Watershed.
