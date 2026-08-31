@@ -273,6 +273,7 @@ def imprimir_resum_dataset(nom_metode,resum,nombre_imatges):
         # Mostrem els resultats arrodonits a 4 decimals
         print(nom,":",round(mitjana,4),"+/-",round(desviacio,4))
 
+"""
 
 if _name=="main_":
 
@@ -302,3 +303,4 @@ if _name=="main_":
         "Prova Bloc 1",
         metriques
     )
+    """
