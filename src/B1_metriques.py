@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
+# -- coding: utf-8 --
 """
-Bloc 2: metriques per avaluar la segmentacio d'exsudats.
+Bloc 1:Metriques per avaluar la segmentacio d'exsudats.
 
 En aquest bloc comparem la mascara que obtenim amb els nostres algoritmes
 amb el Ground Truth, que és la mascara correcte feta pels experts.
@@ -274,7 +274,7 @@ def imprimir_resum_dataset(nom_metode,resum,nombre_imatges):
         print(nom,":",round(mitjana,4),"+/-",round(desviacio,4))
 
 
-if __name__=="__main__":
+if _name=="main_":
 
     # Prova Bloc 1: creem dues mascares petites artificials per comprovar
     # que el calcul de les metriques funciona correctament
