@@ -1,5 +1,5 @@
 """
-Bloc 5 - Millora de contrast del projecte PIVA Retina.
+Bloc 4 - Millora de contrast del projecte PIVA Retina.
 
 Objectiu:
     - Aplicar equalitzacio d'histograma i CLAHE a canals 2D.

@@ -186,8 +186,8 @@ def preprocessa_imatge(ruta_imatge, ruta_mascara):
     # diferents. Adaptem la imatge a la mida de la màscara.
     if imatge.shape[:2] != mascara_gt.shape:
 
-        imatge = resize(imatge, (mascara_gt.shape[0], mascara_gt.shape[1], 3), preserve_range=True, anti_aliasing=True)
-        # Redimensionem la imatge al tamany de la màscara Groundtruth
+        imatge = resize(imatge, (mascara_gt.shape[0], mascara_gt.shape[1], 3), 
+                        preserve_range=True, anti_aliasing=True)
         imatge = np.clip(imatge, 0.0, 1.0)
         
     mascara_retina = crea_mascara_retina(imatge)
@@ -203,7 +203,7 @@ def preprocessa_imatge(ruta_imatge, ruta_mascara):
 
 def visualitza_preprocessament(imatge, mascara_gt, mascara_retina, canals):
     """
-    Mostra una visualització bàsica per comprovar que el preprocessament va bé.
+    Mostrem els resultats principals del preprocessament.
     """
     g = canals[1]
     luma = canals[3]
@@ -243,23 +243,4 @@ def visualitza_preprocessament(imatge, mascara_gt, mascara_retina, canals):
 
     plt.tight_layout()
     plt.show()
-    
-"""Prova de redimensió imatge DR2019
 
-ruta_imatge = Path("../data_samples/Exudate_DR2019_001.jpg")
-ruta_mascara = Path("../data_samples/Exudate_DR2019_001_Groundtruth.jpg")
-
-
-resultat = preprocessa_imatge(ruta_imatge, ruta_mascara)
-
-imatge = resultat[0]
-mascara_gt = resultat[1]
-mascara_retina = resultat[2]
-imatge_retina = resultat[3]
-canals = resultat[4]
-
-if imatge.shape[:2] == mascara_gt.shape:
-    print("TRue",imatge.shape, mascara_gt.shape)
-     
-visualitza_preprocessament(imatge, mascara_gt, mascara_retina, canals)
-"""
