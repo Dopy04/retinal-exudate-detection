@@ -28,7 +28,7 @@ from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.svm import SVC
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 
-from src.deteccio_blobs import columnes_svm
+from src.B9_deteccio_blobs import columnes_svm
 
 
 # -------------------------------------------------------------------------

@@ -1,897 +1,143 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Aug 21 17:56:30 2026
+Main final del projecte PIVA Retina.
 
-@author: gurpi
+Comparem dos pipelines:
+1. Pipeline adaptat del paper: KMMRC + INRG
+2. Pipeline que ha donat millors resultats: V CLAHE + Adaptatiu
+
+Primer processem totes les imatges, després fem una validacio creuada
+per imatge amb el SVM i finalment mostrem les dues imatges que han
+obtingut millor Dice amb el pipeline final.
 """
+
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+
 from pathlib import Path
+from sklearn.model_selection import KFold
 
-from src.metriques import calcular_metriques, imprimir_metriques, comparar_metodes
-from src.preprocessament_3 import preprocessa_imatge, visualitza_preprocessament
-from src.segmentacio import obtenir_mascares_baseline
-from src.mejora_contraste_5 import millora_contrast, visualitza_contrast
-from src.segmentacio import segmentar_otsu
-from src.nick_inrg import invertir_canal, segmentar_nick, segmentar_inrg
-from src.disc_optic import detecta_disc_optic, elimina_disc_optic
-from src.postprocessament import netejar_mascara
-from src.watershed import transformar_distancia, trobar_marcadors, aplicar_watershed
-
-from src.deteccio_blobs import (
-    crea_taula_features,
-    imprimeix_resum_features,
-    ajunta_taules
-)
-
-from src.classificador_SVM import (
-    separa_train_test_per_imatge,
-    entrena_svm,
-    imprimeix_features_seleccionades,
-    prediu_taula,
-    avalua_prediccio_blobs,
-    reconstrueix_mascara_svm
-)
-# BLOC 2 - METRIQUES
-
-mascara_gt_prova=np.array([
-    [0,0,1,1],
-    [0,0,1,1],
-    [0,0,0,0],
-    [1,1,0,0]
-])
-
-mascara_predita_prova=np.array([
-    [0,0,1,0],
-    [0,0,1,1],
-    [0,1,0,0],
-    [1,0,0,0]
-])
-
-metriques=calcular_metriques(mascara_predita_prova,mascara_gt_prova)
-
-imprimir_metriques("Prova bloc 2",metriques)
+from src.B1_metriques import calcular_metriques,imprimir_metriques
+from src.B2_preprocessament import preprocessa_imatge
+from src.B4_segmentacio import segmentar_adaptatiu
+from src.B4_millora_contrast import millora_contrast
+from src.B5_nick_inrg import segmentar_inrg
+from src.B6_disc_optic import detecta_disc_optic,elimina_disc_optic
+from src.B7_postprocessament import netejar_mascara
+from src.B8_watershed import aplicar_watershed
+from src.B9_deteccio_blobs import crea_taula_features
+from src.B10_classificador_SVM import entrena_svm,prediu_taula,reconstrueix_mascara_svm
 
 
-# BLOC 3 - PREPROCESSAMENT
+# -------------------------------------------------------------------------
+# CONFIGURACIO
+# -------------------------------------------------------------------------
 
-
-# Ruta de la carpeta principal del projecte
 ruta_projecte=Path(__file__).resolve().parent
-
-# Ruta de la carpeta on tenim les imatges
 ruta_dades=ruta_projecte/"data_samples"
 
+k_chi2=8
+llindar_positiu=0.25
+llindar_negatiu=0.05
 
-# Posem les 3 imatges i els seus Ground Truth
-imatges=[
-    ("Exudate_JSIEC_002.jpg","Exudate_JSIEC_002_Groundtruth.jpg"),
-    ("Exudate_DR2019_001.jpg","Exudate_DR2019_001_Groundtruth.jpg"),
-    ("Exudate_DR2019_003.jpg","Exudate_DR2019_003_Groundtruth.jpg")
-]
+#Fem 5 particions perquè cada imatge sigui test una vegada
+n_folds=5
+
+#Posa False si només vols calcular resultats sense obrir figures
+mostrar_figures=True
 
 
-# Provem les 3 imatges una per una
-for nom_imatge,nom_gt in imatges:
+# -------------------------------------------------------------------------
+# CARREGA DEL DATASET
+# -------------------------------------------------------------------------
 
-    print("\n------------------------------")
-    print("Imatge:",nom_imatge)
-    print("------------------------------")
+def llista_imatges_dataset():
+    """
+    Busca totes les parelles imatge-Ground Truth disponibles
+    dins de DR2019 i JSIEC.
+    """
 
-    # Creem les rutes completes
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
+    carpetes={
+        "DR2019":("Exudate-DR2019","Exudate-DR2019-Groundtruth"),
+        "JSIEC":("Exudate-JSIEC","Exudate-JSIEC-Groundtruth")
+    }
 
-    # Fem tot el preprocessament
+    parelles=[]
+
+    for dataset,(nom_carpeta,nom_carpeta_gt) in carpetes.items():
+
+        carpeta=ruta_dades/nom_carpeta
+        carpeta_gt=ruta_dades/nom_carpeta_gt
+
+        if not carpeta.exists() or not carpeta_gt.exists():
+            print("No s'ha trobat el dataset:",dataset)
+            continue
+
+        for ruta_imatge in sorted(carpeta.glob("*.jpg")):
+
+            ruta_gt=carpeta_gt/ruta_imatge.name
+
+            if ruta_gt.exists():
+
+                id_imatge=dataset+"_"+ruta_imatge.stem
+
+                parelles.append({
+                    "id":id_imatge,
+                    "dataset":dataset,
+                    "ruta_imatge":ruta_imatge,
+                    "ruta_gt":ruta_gt
+                })
+
+    return parelles
+
+
+def carrega_imatge(parella):
+    """Carrega una imatge i aplica el preprocessament inicial."""
+
     imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
-        ruta_imatge,ruta_gt
+        parella["ruta_imatge"],
+        parella["ruta_gt"]
     )
 
-    # Mostrem les dimensions per comprovar que tot coincideix
-    print("Mida imatge:",imatge.shape)
-    print("Mida Ground Truth:",mascara_gt.shape)
-    print("Mida mascara retina:",mascara_retina.shape)
-    print("Nombre de canals:",len(canals))
+    return imatge,mascara_gt,mascara_retina,imatge_retina,canals
 
-    # Comprovem que podem comparar pixel a pixel
-    if imatge.shape[:2]==mascara_gt.shape:
-        print("OK: imatge i Ground Truth tenen la mateixa mida")
-    else:
-        print("ERROR: les mides no coincideixen")
 
-    # Mostrem els resultats del preprocessament
-    visualitza_preprocessament(
-        imatge,
-        mascara_gt,
+# -------------------------------------------------------------------------
+# FUNCIONS COMUNES DELS PIPELINES
+# -------------------------------------------------------------------------
+
+def elimina_disc(mascara,canals,mascara_retina):
+    """Detecta el disc optic amb el canal R i l'elimina de la mascara."""
+
+    canal_r=canals[0]
+
+    _,_,mascara_disc=detecta_disc_optic(
+        canal_r,
         mascara_retina,
-        canals
-    )
-    
-# ============================================================
-# BLOC 4 - SEGMENTACIO BASELINE
-# ============================================================
-
-print("\n==============================")
-print("BLOC 4 - SEGMENTACIO BASELINE")
-print("==============================")
-
-
-for nom_imatge,nom_gt in imatges:
-
-    print("\n----------------------------------")
-    print("PROVA BLOC 4:",nom_imatge)
-    print("----------------------------------")
-
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
-
-    # Tornem a fer el preprocessament per obtenir
-    # els canals i la mascara de retina
-    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
-        ruta_imatge,ruta_gt
+        radi_tancament=4,
+        radi_dilatacio=3
     )
 
-    # Utilitzem el canal G
-    canal_g=canals[1]
-
-    # Executem tots els metodes de segmentacio baseline
-    mascares=obtenir_mascares_baseline(
-        canal_g,
-        mascara_retina
+    mascara_sense_disc=elimina_disc_optic(
+        mascara,
+        mascara_disc
     )
 
-    # Comparem totes les mascares amb el Ground Truth
-    resultats=comparar_metodes(
-        mascares,
-        mascara_gt
-    )
-
-    # Mostrem les metriques de cada metode
-    for nom_metode in resultats:
-
-        imprimir_metriques(
-            nom_metode,
-            resultats[nom_metode]
-        )
+    return mascara_sense_disc,mascara_disc
 
 
-    # --------------------------------------------------------
-    # VISUALITZACIO
-    # --------------------------------------------------------
+def finalitza_pipeline(mascara_segmentacio,canals,mascara_retina):
+    """
+    Etapes comunes després de la segmentacio:
+    disc optic, morfologia i Watershed.
+    """
 
-    plt.figure(figsize=(14,8))
-
-    plt.suptitle(
-        "PROVA BLOC 4 - "+nom_imatge+" - Canal G",
-        fontsize=16
-    )
-
-    # Imatge original
-    plt.subplot(2,4,1)
-    plt.imshow(imatge)
-    plt.title("Original")
-    plt.axis("off")
-
-    # Canal G
-    plt.subplot(2,4,2)
-    plt.imshow(canal_g,cmap="gray")
-    plt.title("Canal G")
-    plt.axis("off")
-
-    # Ground Truth
-    plt.subplot(2,4,3)
-    plt.imshow(mascara_gt,cmap="gray")
-    plt.title("Ground Truth")
-    plt.axis("off")
-
-    # Otsu
-    plt.subplot(2,4,4)
-    plt.imshow(mascares["Otsu"],cmap="gray")
-    plt.title("Otsu")
-    plt.axis("off")
-
-    # Llindar fix
-    plt.subplot(2,4,5)
-    plt.imshow(mascares["Llindar_fix"],cmap="gray")
-    plt.title("Llindar fix")
-    plt.axis("off")
-
-    # Adaptatiu
-    plt.subplot(2,4,6)
-    plt.imshow(mascares["Adaptatiu"],cmap="gray")
-    plt.title("Adaptatiu")
-    plt.axis("off")
-
-    # Sauvola
-    plt.subplot(2,4,7)
-    plt.imshow(mascares["Sauvola"],cmap="gray")
-    plt.title("Sauvola")
-    plt.axis("off")
-
-    # K-means
-    plt.subplot(2,4,8)
-    plt.imshow(mascares["Kmeans"],cmap="gray")
-    plt.title("K-means")
-    plt.axis("off")
-
-    plt.tight_layout(rect=[0,0,1,0.95])
-    plt.show()
-    
-# ============================================================
-# BLOC 5 - MILLORA DE CONTRAST
-# ============================================================
-
-print("\n============================")
-print("BLOC 5 - MILLORA DE CONTRAST")
-print("============================")
-
-
-for nom_imatge,nom_gt in imatges:
-
-    print("\n----------------------------------")
-    print("PROVA BLOC 5:",nom_imatge)
-    print("----------------------------------")
-
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
-
-    # Fem primer el preprocessament del bloc 3
-    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
-        ruta_imatge,
-        ruta_gt
-    )
-
-    # Apliquem els metodes de millora de contrast
-    contrast=millora_contrast(
-        imatge_retina,
-        mascara_retina,
-        canals
-    )
-
-    # Guardem alguns resultats per comprovar-los
-    luma_eq=contrast[0]
-    luma_clahe=contrast[1]
-    g_clahe=contrast[2]
-    b_clahe=contrast[3]
-    v_clahe=contrast[4]
-    v_kmmrc=contrast[5]
-    v_kmmrc_clahe=contrast[6]
-    v_kmmrc_clahe_filtrat=contrast[7]
-    imatge_kmmrc=contrast[8]
-
-    # Comprovem les mides
-    print("Mida G CLAHE:",g_clahe.shape)
-    print("Mida V CLAHE:",v_clahe.shape)
-    print("Mida V KMMRC:",v_kmmrc.shape)
-    print("Mida KMMRC + CLAHE:",v_kmmrc_clahe.shape)
-    print("Mida resultat final:",v_kmmrc_clahe_filtrat.shape)
-
-    # Comprovem que tots els resultats tenen la mateixa mida que el GT
-    if v_kmmrc_clahe_filtrat.shape==mascara_gt.shape:
-        print("OK: el resultat del bloc 5 te la mateixa mida que el Ground Truth")
-    else:
-        print("ERROR: les mides no coincideixen")
-
-    # Visualitzem els resultats
-    visualitza_contrast(
-        imatge_retina,
+    mascara_sense_disc,mascara_disc=elimina_disc(
+        mascara_segmentacio,
         canals,
-        contrast,
-        "PROVA BLOC 5 - "+nom_imatge
-    )
-    
-# ============================================================
-# PROVA BLOC 5B - CONTRAST + OTSU
-# ============================================================
-
-print("\n================================")
-print("PROVA BLOC 5B - CONTRAST + OTSU")
-print("================================")
-
-
-for nom_imatge,nom_gt in imatges:
-
-    print("\n----------------------------------")
-    print("PROVA BLOC 5B:",nom_imatge)
-    print("----------------------------------")
-
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
-
-    # Primer fem el preprocessament
-    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
-        ruta_imatge,
-        ruta_gt
-    )
-
-    # Bloc 5: millora de contrast
-    contrast=millora_contrast(
-        imatge_retina,
-        mascara_retina,
-        canals
-    )
-
-    # Canals que volem comparar
-    g_original=canals[1]
-
-    g_clahe=contrast[2]
-    luma_clahe=contrast[1]
-    v_clahe=contrast[4]
-
-    # --------------------------------------------------------
-    # OTSU SOBRE CADA CANAL
-    # --------------------------------------------------------
-
-    mascara_g_original=segmentar_otsu(
-        g_original,
         mascara_retina
     )
-
-    mascara_g_clahe=segmentar_otsu(
-        g_clahe,
-        mascara_retina
-    )
-
-    mascara_luma_clahe=segmentar_otsu(
-        luma_clahe,
-        mascara_retina
-    )
-
-    mascara_v_clahe=segmentar_otsu(
-        v_clahe,
-        mascara_retina
-    )
-
-    # Guardem totes les mascares en un diccionari
-    mascares_5b={
-        "G original + Otsu":mascara_g_original,
-        "G CLAHE + Otsu":mascara_g_clahe,
-        "Luma CLAHE + Otsu":mascara_luma_clahe,
-        "V CLAHE + Otsu":mascara_v_clahe
-    }
-
-    # --------------------------------------------------------
-    # METRIQUES
-    # --------------------------------------------------------
-
-    resultats_5b=comparar_metodes(
-        mascares_5b,
-        mascara_gt
-    )
-
-    for nom_metode in resultats_5b:
-
-        imprimir_metriques(
-            nom_metode,
-            resultats_5b[nom_metode]
-        )
-
-    # --------------------------------------------------------
-    # VISUALITZACIO
-    # --------------------------------------------------------
-
-    plt.figure(figsize=(14,8))
-
-    plt.suptitle(
-        "PROVA BLOC 5B - "+nom_imatge,
-        fontsize=16
-    )
-
-    # Ground Truth
-    plt.subplot(2,4,1)
-    plt.imshow(mascara_gt,cmap="gray")
-    plt.title("Ground Truth")
-    plt.axis("off")
-
-    # G original
-    plt.subplot(2,4,2)
-    plt.imshow(g_original,cmap="gray")
-    plt.title("G original")
-    plt.axis("off")
-
-    # G CLAHE
-    plt.subplot(2,4,3)
-    plt.imshow(g_clahe,cmap="gray")
-    plt.title("G CLAHE")
-    plt.axis("off")
-
-    # Luma CLAHE
-    plt.subplot(2,4,4)
-    plt.imshow(luma_clahe,cmap="gray")
-    plt.title("Luma CLAHE")
-    plt.axis("off")
-
-    # G original + Otsu
-    plt.subplot(2,4,5)
-    plt.imshow(mascara_g_original,cmap="gray")
-    plt.title("G original + Otsu")
-    plt.axis("off")
-
-    # G CLAHE + Otsu
-    plt.subplot(2,4,6)
-    plt.imshow(mascara_g_clahe,cmap="gray")
-    plt.title("G CLAHE + Otsu")
-    plt.axis("off")
-
-    # Luma CLAHE + Otsu
-    plt.subplot(2,4,7)
-    plt.imshow(mascara_luma_clahe,cmap="gray")
-    plt.title("Luma CLAHE + Otsu")
-    plt.axis("off")
-
-    # V CLAHE + Otsu
-    plt.subplot(2,4,8)
-    plt.imshow(mascara_v_clahe,cmap="gray")
-    plt.title("V CLAHE + Otsu")
-    plt.axis("off")
-
-    plt.tight_layout(
-        rect=[0,0,1,0.95]
-    )
-
-    plt.show()
-
-# ============================================================
-# BLOC 6 - NICK / INRG
-# ============================================================
-
-print("\n============================")
-print("BLOC 6 - NICK / INRG")
-print("============================")
-
-
-for nom_imatge,nom_gt in imatges:
-
-    print("\n----------------------------------")
-    print("PROVA BLOC 6:",nom_imatge)
-    print("----------------------------------")
-
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
-
-    # --------------------------------------------------------
-    # BLOC 3 - PREPROCESSAMENT
-    # --------------------------------------------------------
-
-    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
-        ruta_imatge,
-        ruta_gt
-    )
-
-    # Canal G original
-    g_original=canals[1]
-
-    # --------------------------------------------------------
-    # BLOC 5 - CLAHE
-    # --------------------------------------------------------
-
-    contrast=millora_contrast(
-        imatge_retina,
-        mascara_retina,
-        canals
-    )
-
-    g_clahe=contrast[2]
-
-    # --------------------------------------------------------
-    # NICK
-    # --------------------------------------------------------
-
-    # NICK esta pensat per detectar regions fosques.
-    # Com els exsudats son brillants, invertim els canals.
-    g_invertit=invertir_canal(g_original)
-    g_clahe_invertit=invertir_canal(g_clahe)
-
-    mascara_nick_g=segmentar_nick(
-        g_invertit,
-        mascara_retina,
-        mida_finestra=95,
-        k=-0.2
-    )
-
-    mascara_nick_clahe=segmentar_nick(
-        g_clahe_invertit,
-        mascara_retina,
-        mida_finestra=95,
-        k=-0.2
-    )
-
-    # --------------------------------------------------------
-    # INRG
-    # --------------------------------------------------------
-
-    # ATENCIO:
-    # INRG ja inverteix el canal dins de la seva funcio.
-    # Per tant aqui passem el canal ORIGINAL, no invertit.
-
-    mascara_inrg_g=segmentar_inrg(
-        g_original,
-        mascara_retina,
-        mida_finestra=95,
-        k=-0.2,
-        iteracions=3,
-        delta=0.1
-    )
-
-    mascara_inrg_clahe=segmentar_inrg(
-        g_clahe,
-        mascara_retina,
-        mida_finestra=95,
-        k=-0.2,
-        iteracions=3,
-        delta=0.1
-    )
-
-    # --------------------------------------------------------
-    # METRIQUES
-    # --------------------------------------------------------
-
-    mascares_6={
-        "G original + NICK":mascara_nick_g,
-        "G CLAHE + NICK":mascara_nick_clahe,
-        "G original + INRG":mascara_inrg_g,
-        "G CLAHE + INRG":mascara_inrg_clahe
-    }
-
-    resultats_6=comparar_metodes(
-        mascares_6,
-        mascara_gt
-    )
-
-    for nom_metode in resultats_6:
-
-        imprimir_metriques(
-            nom_metode,
-            resultats_6[nom_metode]
-        )
-
-    # --------------------------------------------------------
-    # VISUALITZACIO
-    # --------------------------------------------------------
-
-    plt.figure(figsize=(14,8))
-
-    plt.suptitle(
-        "PROVA BLOC 6 - "+nom_imatge,
-        fontsize=16
-    )
-
-    # Ground Truth
-    plt.subplot(2,4,1)
-    plt.imshow(mascara_gt,cmap="gray")
-    plt.title("Ground Truth")
-    plt.axis("off")
-
-    # Canal G original
-    plt.subplot(2,4,2)
-    plt.imshow(g_original,cmap="gray")
-    plt.title("G original")
-    plt.axis("off")
-
-    # Canal G invertit
-    plt.subplot(2,4,3)
-    plt.imshow(g_invertit,cmap="gray")
-    plt.title("G invertit")
-    plt.axis("off")
-
-    # Canal G CLAHE
-    plt.subplot(2,4,4)
-    plt.imshow(g_clahe,cmap="gray")
-    plt.title("G CLAHE")
-    plt.axis("off")
-
-    # NICK sobre G original
-    plt.subplot(2,4,5)
-    plt.imshow(mascara_nick_g,cmap="gray")
-    plt.title("G + NICK")
-    plt.axis("off")
-
-    # NICK sobre G CLAHE
-    plt.subplot(2,4,6)
-    plt.imshow(mascara_nick_clahe,cmap="gray")
-    plt.title("G CLAHE + NICK")
-    plt.axis("off")
-
-    # INRG sobre G original
-    plt.subplot(2,4,7)
-    plt.imshow(mascara_inrg_g,cmap="gray")
-    plt.title("G + INRG")
-    plt.axis("off")
-
-    # INRG sobre G CLAHE
-    plt.subplot(2,4,8)
-    plt.imshow(mascara_inrg_clahe,cmap="gray")
-    plt.title("G CLAHE + INRG")
-    plt.axis("off")
-
-    plt.tight_layout(
-        rect=[0,0,1,0.95],
-        h_pad=2
-    )
-
-    plt.show()
-    
-    
-# ============================================================
-# BLOC 7 - ELIMINACIO DEL DISC OPTIC
-# ============================================================
-
-print("\n================================")
-print("BLOC 7 - ELIMINACIO DISC OPTIC")
-print("================================")
-
-
-for nom_imatge,nom_gt in imatges:
-
-    print("\n----------------------------------")
-    print("PROVA BLOC 7:",nom_imatge)
-    print("----------------------------------")
-
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
-
-    # --------------------------------------------------------
-    # BLOC 3 - PREPROCESSAMENT
-    # --------------------------------------------------------
-
-    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
-        ruta_imatge,
-        ruta_gt
-    )
-
-    # Canals que utilitzarem per detectar el disc optic
-    canal_r=canals[0]
-    canal_g=canals[1]
-    canal_v=canals[6]
-
-    # Combinacio R + V.
-    # Dividim entre 2 per mantenir els valors entre 0 i 1.
-    canal_rv=(canal_r+canal_v)/2
-
-
-    # --------------------------------------------------------
-    # DETECCIO DEL DISC OPTIC
-    # --------------------------------------------------------
-
-    # Prova utilitzant canal R
-    r_suau,r_candidats,disc_r=detecta_disc_optic(
-        canal_r,
-        mascara_retina
-    )
-
-    # Prova utilitzant canal V
-    v_suau,v_candidats,disc_v=detecta_disc_optic(
-        canal_v,
-        mascara_retina
-    )
-
-    # Prova utilitzant combinacio R + V
-    rv_suau,rv_candidats,disc_rv=detecta_disc_optic(
-        canal_rv,
-        mascara_retina
-    )
-
-
-    # --------------------------------------------------------
-    # SEGMENTACIO BASELINE
-    # --------------------------------------------------------
-
-    # Utilitzem Otsu sobre G com a mascara candidata
-    # per veure si eliminar el disc optic millora el resultat.
-    mascara_otsu=segmentar_otsu(
-        canal_g,
-        mascara_retina
-    )
-
-
-    # --------------------------------------------------------
-    # ELIMINEM EL DISC OPTIC
-    # --------------------------------------------------------
-
-    mascara_otsu_sense_r=elimina_disc_optic(
-        mascara_otsu,
-        disc_r
-    )
-
-    mascara_otsu_sense_v=elimina_disc_optic(
-        mascara_otsu,
-        disc_v
-    )
-
-    mascara_otsu_sense_rv=elimina_disc_optic(
-        mascara_otsu,
-        disc_rv
-    )
-
-
-    # --------------------------------------------------------
-    # METRIQUES
-    # --------------------------------------------------------
-
-    mascares_7={
-        "Otsu original":mascara_otsu,
-        "Otsu - disc R":mascara_otsu_sense_r,
-        "Otsu - disc V":mascara_otsu_sense_v,
-        "Otsu - disc R+V":mascara_otsu_sense_rv
-    }
-
-    resultats_7=comparar_metodes(
-        mascares_7,
-        mascara_gt
-    )
-
-    for nom_metode in resultats_7:
-
-        imprimir_metriques(
-            nom_metode,
-            resultats_7[nom_metode]
-        )
-
-
-    # Area del disc detectat
-    print("\nPixels disc R:",disc_r.sum())
-    print("Pixels disc V:",disc_v.sum())
-    print("Pixels disc R+V:",disc_rv.sum())
-
-
-    # --------------------------------------------------------
-    # VISUALITZACIO
-    # --------------------------------------------------------
-
-    plt.figure(figsize=(14,11))
-
-    plt.suptitle(
-        "PROVA BLOC 7 - "+nom_imatge,
-        fontsize=16
-    )
-
-
-    # FILA 1 -------------------------------------------------
-
-    plt.subplot(3,4,1)
-    plt.imshow(imatge)
-    plt.title("Original")
-    plt.axis("off")
-
-    plt.subplot(3,4,2)
-    plt.imshow(mascara_gt,cmap="gray")
-    plt.title("Ground Truth")
-    plt.axis("off")
-
-    plt.subplot(3,4,3)
-    plt.imshow(canal_r,cmap="gray")
-    plt.title("Canal R")
-    plt.axis("off")
-
-    plt.subplot(3,4,4)
-    plt.imshow(canal_v,cmap="gray")
-    plt.title("Canal V")
-    plt.axis("off")
-
-
-    # FILA 2 -------------------------------------------------
-
-    plt.subplot(3,4,5)
-    plt.imshow(r_candidats,cmap="gray")
-    plt.title("Candidats disc R")
-    plt.axis("off")
-
-    plt.subplot(3,4,6)
-    plt.imshow(disc_r,cmap="gray")
-    plt.title("Disc detectat R")
-    plt.axis("off")
-
-    plt.subplot(3,4,7)
-    plt.imshow(disc_v,cmap="gray")
-    plt.title("Disc detectat V")
-    plt.axis("off")
-
-    plt.subplot(3,4,8)
-    plt.imshow(disc_rv,cmap="gray")
-    plt.title("Disc detectat R+V")
-    plt.axis("off")
-
-
-    # FILA 3 -------------------------------------------------
-
-    plt.subplot(3,4,9)
-    plt.imshow(mascara_otsu,cmap="gray")
-    plt.title("Otsu original")
-    plt.axis("off")
-
-    plt.subplot(3,4,10)
-    plt.imshow(mascara_otsu_sense_r,cmap="gray")
-    plt.title("Otsu - disc R")
-    plt.axis("off")
-
-    plt.subplot(3,4,11)
-    plt.imshow(mascara_otsu_sense_v,cmap="gray")
-    plt.title("Otsu - disc V")
-    plt.axis("off")
-
-    plt.subplot(3,4,12)
-    plt.imshow(mascara_otsu_sense_rv,cmap="gray")
-    plt.title("Otsu - disc R+V")
-    plt.axis("off")
-
-
-    plt.tight_layout(
-        rect=[0,0,1,0.95],
-        h_pad=2
-    )
-
-    plt.show()
-
-
-# ============================================================
-# BLOC 8 - MORFOLOGIA MATEMATICA
-# ============================================================
-
-print("\n==============================")
-print("BLOC 8 - MORFOLOGIA MATEMATICA")
-print("==============================")
-
-
-for nom_imatge,nom_gt in imatges:
-
-    print("\n----------------------------------")
-    print("PROVA BLOC 8:",nom_imatge)
-    print("----------------------------------")
-
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
-
-
-    # --------------------------------------------------------
-    # PREPROCESSAMENT
-    # --------------------------------------------------------
-
-    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
-        ruta_imatge,
-        ruta_gt
-    )
-
-    canal_r=canals[0]
-    canal_g=canals[1]
-
-
-    # --------------------------------------------------------
-    # OTSU
-    # --------------------------------------------------------
-
-    mascara_otsu=segmentar_otsu(
-        canal_g,
-        mascara_retina
-    )
-
-
-    # --------------------------------------------------------
-    # ELIMINACIO DEL DISC OPTIC
-    # --------------------------------------------------------
-
-    # Fem servir el canal R.
-    # Utilitzem una dilatacio mes petita que al Bloc 7
-    # per no eliminar una zona circular massa gran.
-
-    r_suau,r_candidats,disc_r=detecta_disc_optic(
-        canal_r,
-        mascara_retina,
-        radi_tancament=4,
-        radi_dilatacio=3
-    )
-
-    mascara_sense_disc=elimina_disc_optic(
-        mascara_otsu,
-        disc_r
-    )
-
-
-    # --------------------------------------------------------
-    # MORFOLOGIA
-    # --------------------------------------------------------
-
-    # Eliminem objectes petits, fem closing
-    # i omplim petits forats.
 
     mascara_morfologia=netejar_mascara(
         mascara_sense_disc,
@@ -899,510 +145,38 @@ for nom_imatge,nom_gt in imatges:
         mida_forat=50
     )
 
-
-    # --------------------------------------------------------
-    # METRIQUES
-    # --------------------------------------------------------
-
-    mascares_8={
-        "Otsu original":mascara_otsu,
-        "Otsu - disc":mascara_sense_disc,
-        "Otsu - disc + morfologia":mascara_morfologia
-    }
-
-    resultats_8=comparar_metodes(
-        mascares_8,
-        mascara_gt
-    )
-
-    for nom_metode in resultats_8:
-
-        imprimir_metriques(
-            nom_metode,
-            resultats_8[nom_metode]
-        )
-
-
-    # --------------------------------------------------------
-    # VISUALITZACIO
-    # --------------------------------------------------------
-
-    plt.figure(figsize=(14,8))
-
-    plt.suptitle(
-        "PROVA BLOC 8 - "+nom_imatge,
-        fontsize=16
-    )
-
-    plt.subplot(2,3,1)
-    plt.imshow(imatge)
-    plt.title("Original")
-    plt.axis("off")
-
-    plt.subplot(2,3,2)
-    plt.imshow(mascara_gt,cmap="gray")
-    plt.title("Ground Truth")
-    plt.axis("off")
-
-    plt.subplot(2,3,3)
-    plt.imshow(mascara_otsu,cmap="gray")
-    plt.title("Otsu")
-    plt.axis("off")
-
-    plt.subplot(2,3,4)
-    plt.imshow(disc_r,cmap="gray")
-    plt.title("Disc optic")
-    plt.axis("off")
-
-    plt.subplot(2,3,5)
-    plt.imshow(mascara_sense_disc,cmap="gray")
-    plt.title("Otsu - disc")
-    plt.axis("off")
-
-    plt.subplot(2,3,6)
-    plt.imshow(mascara_morfologia,cmap="gray")
-    plt.title("Otsu - disc + morfologia")
-    plt.axis("off")
-
-    plt.tight_layout(
-        rect=[0,0,1,0.95],
-        h_pad=2
-    )
-
-    plt.show()
-    
-    
-# ============================================================
-# BLOC 9 - WATERSHED
-# ============================================================
-
-print("\n====================")
-print("BLOC 9 - WATERSHED")
-print("====================")
-
-
-for nom_imatge,nom_gt in imatges:
-
-    print("\n----------------------------------")
-    print("PROVA BLOC 9:",nom_imatge)
-    print("----------------------------------")
-
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
-
-
-    # --------------------------------------------------------
-    # PREPROCESSAMENT
-    # --------------------------------------------------------
-
-    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
-        ruta_imatge,
-        ruta_gt
-    )
-
-    canal_r=canals[0]
-    canal_g=canals[1]
-
-
-    # --------------------------------------------------------
-    # OTSU
-    # --------------------------------------------------------
-
-    mascara_otsu=segmentar_otsu(
-        canal_g,
-        mascara_retina
-    )
-
-
-    # --------------------------------------------------------
-    # DISC OPTIC
-    # --------------------------------------------------------
-
-    r_suau,r_candidats,disc_r=detecta_disc_optic(
-        canal_r,
-        mascara_retina,
-        radi_tancament=4,
-        radi_dilatacio=3
-    )
-
-    mascara_sense_disc=elimina_disc_optic(
-        mascara_otsu,
-        disc_r
-    )
-
-
-    # --------------------------------------------------------
-    # MORFOLOGIA
-    # --------------------------------------------------------
-
-    mascara_morfologia=netejar_mascara(
-        mascara_sense_disc,
-        mida_minima=50,
-        mida_forat=50
-    )
-
-
-    # --------------------------------------------------------
-    # WATERSHED
-    # --------------------------------------------------------
-
-    # Transformada de distancia
-    distancia=transformar_distancia(
-        mascara_morfologia
-    )
-
-    # Busquem els centres dels possibles blobs
-    marcadors=trobar_marcadors(
-        distancia,
-        mascara_morfologia,
-        distancia_minima=5
-    )
-
-    # Separem els blobs
     etiquetes=aplicar_watershed(
         mascara_morfologia,
         distancia_minima=5
     )
 
+    #B9 treballa amb la mascara binaria dels candidats
+    mascara_candidats=etiquetes>0
 
-    # Watershed retorna etiquetes:
-    # 0=fons
-    # 1=blob 1
-    # 2=blob 2
-    # ...
-    #
-    # Si volem tornar a una mascara binaria:
-    mascara_watershed=etiquetes>0
+    return mascara_disc,mascara_sense_disc,mascara_morfologia,etiquetes,mascara_candidats
 
 
-    # Nombre de blobs detectats
-    nombre_blobs=np.max(etiquetes)
+# -------------------------------------------------------------------------
+# PIPELINE DEL PAPER
+# -------------------------------------------------------------------------
 
-    print("Nombre de blobs després de Watershed:",nombre_blobs)
+def pipeline_paper(imatge_retina,canals,mascara_retina):
+    """
+    Pipeline adaptat del treball de referencia:
+    V KMMRC -> INRG -> disc optic -> morfologia -> Watershed.
+    """
 
-
-    # --------------------------------------------------------
-    # METRIQUES
-    # --------------------------------------------------------
-
-    mascares_9={
-        "Otsu - disc + morfologia":mascara_morfologia,
-        "Watershed binari":mascara_watershed
-    }
-
-    resultats_9=comparar_metodes(
-        mascares_9,
-        mascara_gt
-    )
-
-    for nom_metode in resultats_9:
-
-        imprimir_metriques(
-            nom_metode,
-            resultats_9[nom_metode]
-        )
-
-
-    # --------------------------------------------------------
-    # VISUALITZACIO
-    # --------------------------------------------------------
-
-    plt.figure(figsize=(14,8))
-
-    plt.suptitle(
-        "PROVA BLOC 9 - "+nom_imatge,
-        fontsize=16
-    )
-
-
-    # Ground Truth
-    plt.subplot(2,3,1)
-    plt.imshow(mascara_gt,cmap="gray")
-    plt.title("Ground Truth")
-    plt.axis("off")
-
-
-    # Mascara abans de watershed
-    plt.subplot(2,3,2)
-    plt.imshow(mascara_morfologia,cmap="gray")
-    plt.title("Mascara morfologia")
-    plt.axis("off")
-
-
-    # Transformada de distancia
-    plt.subplot(2,3,3)
-    plt.imshow(distancia,cmap="gray")
-    plt.title("Transformada distancia")
-    plt.axis("off")
-
-
-    # Marcadors
-    plt.subplot(2,3,4)
-    plt.imshow(marcadors,cmap="nipy_spectral")
-    plt.title("Marcadors")
-    plt.axis("off")
-
-
-    # Watershed etiquetat
-    plt.subplot(2,3,5)
-    plt.imshow(etiquetes,cmap="nipy_spectral")
-    plt.title("Watershed - blobs")
-    plt.axis("off")
-
-
-    # Watershed binari
-    plt.subplot(2,3,6)
-    plt.imshow(mascara_watershed,cmap="gray")
-    plt.title("Watershed binari")
-    plt.axis("off")
-
-
-    plt.tight_layout(
-        rect=[0,0,1,0.95],
-        h_pad=2
-    )
-
-    plt.show()
-    
-
-# ============================================================
-# BLOC 10 - FEATURES DELS BLOBS
-# PROVA DELS DOS PIPELINES
-# ============================================================
-
-print("\n==========================================")
-print("BLOC 10 - FEATURES DELS DOS PIPELINES")
-print("==========================================")
-
-
-# Guardarem les taules de cada imatge.
-taules_otsu = []
-taules_inrg = []
-
-
-# Guardarem també les etiquetes de Watershed,
-# la GT i la imatge perquè les necessitarem al Bloc 11.
-dades_otsu = {}
-dades_inrg = {}
-
-
-for nom_imatge,nom_gt in imatges:
-
-    print("\n==========================================")
-    print("PROVA BLOC 10:",nom_imatge)
-    print("==========================================")
-
-
-    ruta_imatge = ruta_dades/nom_imatge
-    ruta_gt = ruta_dades/nom_gt
-
-    
-    
-# ============================================================
-# BLOC 10 + 11 - FEATURES DE BLOBS + SVM
-# ============================================================
-
-print("\n====================================")
-print("BLOC 10 + 11 - FEATURES + SVM")
-print("====================================")
-
-
-# Guardarem les taules de features de totes les imatges.
-taules_features=[]
-
-# Guardem tambe les mascares i GT per reconstruir despres.
-mascares_candidats={}
-mascares_gt={}
-imatges_originals={}
-
-
-# ============================================================
-# PRIMER: CREEM FEATURES DE CADA IMATGE
-# ============================================================
-
-for nom_imatge,nom_gt in imatges:
-
-    print("\n----------------------------------")
-    print("BLOC 10 - FEATURES:",nom_imatge)
-    print("----------------------------------")
-
-    ruta_imatge=ruta_dades/nom_imatge
-    ruta_gt=ruta_dades/nom_gt
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
-
-
-    # --------------------------------------------------------
-    # PREPROCESSAMENT
-    # --------------------------------------------------------
-
-<<<<<<< HEAD
-    imatge,mascara_gt,mascara_retina,imatge_retina,canals = preprocessa_imatge(
-=======
-    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
-        ruta_imatge,
-        ruta_gt
-    )
-
-<<<<<<< HEAD
-    canal_r = canals[0]
-    canal_g = canals[1]
-
-
-    # --------------------------------------------------------
-    # DETECCIO DEL DISC OPTIC
-    # --------------------------------------------------------
-
-    # De moment mantenim els parametres que hem utilitzat
-    # en les ultimes proves.
-    _,_,disc_r = detecta_disc_optic(
-=======
-    canal_r=canals[0]
-    canal_g=canals[1]
-
-
-    # --------------------------------------------------------
-    # MASCARA CANDIDATA
-    # --------------------------------------------------------
-    # Per a la primera prova del SVM usem la branca que ja teniem:
-    #
-    # G original -> Otsu -> disc optic -> morfologia -> Watershed
-    #
-    # Aquesta mascara NO es encara el resultat final.
-    # Es una mascara de candidats que el SVM intentara filtrar.
-
-    mascara_otsu=segmentar_otsu(
-        canal_g,
-        mascara_retina
-    )
-
-
-    # --------------------------------------------------------
-    # DISC OPTIC
-    # --------------------------------------------------------
-
-    r_suau,r_candidats,disc_r=detecta_disc_optic(
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
-        canal_r,
+    contrast=millora_contrast(
+        imatge_retina,
         mascara_retina,
-        radi_tancament=4,
-        radi_dilatacio=3
+        canals
     )
 
-<<<<<<< HEAD
+    #Posicio 5 de millora_contrast = canal V després de KMMRC
+    v_kmmrc=contrast[5]
 
-    # ========================================================
-    # PIPELINE A
-    # OTSU
-    # ========================================================
-
-    mascara_otsu = segmentar_otsu(
-        canal_g,
-        mascara_retina
-    )
-
-
-    mascara_otsu_disc = elimina_disc_optic(
-=======
-    mascara_sense_disc=elimina_disc_optic(
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
-        mascara_otsu,
-        disc_r
-    )
-
-
-<<<<<<< HEAD
-    mascara_otsu_morf = netejar_mascara(
-        mascara_otsu_disc,
-=======
-    # --------------------------------------------------------
-    # MORFOLOGIA
-    # --------------------------------------------------------
-    # Ara mantenim la mateixa configuracio que teniem al Bloc 9.
-    # Mes endavant podem provar mida_minima=10 i mida_forat=20.
-
-    mascara_morfologia=netejar_mascara(
-        mascara_sense_disc,
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
-        mida_minima=50,
-        mida_forat=50
-    )
-
-
-<<<<<<< HEAD
-    etiquetes_otsu = aplicar_watershed(
-        mascara_otsu_morf,
-        distancia_minima=5
-    )
-
-
-    # --------------------------------------------------------
-    # FEATURES PIPELINE A
-    # --------------------------------------------------------
-
-    taula_otsu = crea_taula_features(
-        imatge,
-        canals,
-        etiquetes_otsu,
-        mascara_gt,
-        nom_imatge=nom_imatge,
-        nom_canal="G",
-        nom_metode="Otsu"
-    )
-
-
-    print("\n---------- PIPELINE A: OTSU ----------")
-
-    print(
-        "Blobs Watershed:",
-        np.max(etiquetes_otsu)
-    )
-
-    imprimeix_resum_features(
-        taula_otsu,
-        nom_imatge+" - Otsu"
-    )
-
-
-    # Metriques abans del SVM.
-    mascara_candidats_otsu = etiquetes_otsu > 0
-
-    imprimir_metriques(
-        "PIPELINE A - Otsu abans SVM",
-        calcular_metriques(
-            mascara_candidats_otsu,
-            mascara_gt
-        )
-    )
-
-
-    taules_otsu.append(
-        taula_otsu
-    )
-
-
-    dades_otsu[nom_imatge] = {
-
-        "imatge":imatge,
-
-        "gt":mascara_gt,
-
-        "etiquetes":etiquetes_otsu,
-
-        "candidats":mascara_candidats_otsu
-    }
-
-
-    # ========================================================
-    # PIPELINE B
-    # INRG
-    # ========================================================
-
-    # INRG inverteix internament el canal.
-    # Per tant li passem directament el canal G original.
-
-    mascara_inrg = segmentar_inrg(
-        canal_g,
+    mascara_segmentacio=segmentar_inrg(
+        v_kmmrc,
         mascara_retina,
         mida_finestra=95,
         k=-0.2,
@@ -1410,734 +184,595 @@ for nom_imatge,nom_gt in imatges:
         delta=0.1
     )
 
-
-    mascara_inrg_disc = elimina_disc_optic(
-        mascara_inrg,
-        disc_r
-    )
-
-
-    mascara_inrg_morf = netejar_mascara(
-        mascara_inrg_disc,
-        mida_minima=50,
-        mida_forat=50
-    )
-
-
-    etiquetes_inrg = aplicar_watershed(
-        mascara_inrg_morf,
-        distancia_minima=5
-    )
-
-
-    # --------------------------------------------------------
-    # FEATURES PIPELINE B
-    # --------------------------------------------------------
-
-    taula_inrg = crea_taula_features(
-        imatge,
+    mascara_disc,mascara_sense_disc,mascara_morfologia,etiquetes,mascara_candidats=finalitza_pipeline(
+        mascara_segmentacio,
         canals,
-        etiquetes_inrg,
-        mascara_gt,
-        nom_imatge=nom_imatge,
-        nom_canal="G",
-        nom_metode="INRG"
+        mascara_retina
     )
 
-
-    print("\n---------- PIPELINE B: INRG ----------")
-
-    print(
-        "Blobs Watershed:",
-        np.max(etiquetes_inrg)
-    )
-
-    imprimeix_resum_features(
-        taula_inrg,
-        nom_imatge+" - INRG"
-    )
-
-
-    mascara_candidats_inrg = etiquetes_inrg > 0
-
-
-    imprimir_metriques(
-        "PIPELINE B - INRG abans SVM",
-        calcular_metriques(
-            mascara_candidats_inrg,
-            mascara_gt
-        )
-    )
-
-
-    taules_inrg.append(
-        taula_inrg
-    )
-
-
-    dades_inrg[nom_imatge] = {
-
-        "imatge":imatge,
-
-        "gt":mascara_gt,
-
-        "etiquetes":etiquetes_inrg,
-
-        "candidats":mascara_candidats_inrg
+    return {
+        "canal":v_kmmrc,
+        "segmentacio":mascara_segmentacio,
+        "disc":mascara_disc,
+        "sense_disc":mascara_sense_disc,
+        "morfologia":mascara_morfologia,
+        "etiquetes":etiquetes,
+        "candidats":mascara_candidats
     }
 
 
-# ============================================================
-# AJUNTEM LES TAULES
-# ============================================================
+# -------------------------------------------------------------------------
+# PIPELINE AMB MILLORS RESULTATS
+# -------------------------------------------------------------------------
 
-taula_total_otsu = ajunta_taules(
-    taules_otsu
-)
+def pipeline_millor(imatge_retina,canals,mascara_retina):
+    """
+    Pipeline que ha donat millors resultats:
+    V CLAHE -> Adaptatiu -> disc optic -> morfologia -> Watershed.
+    """
 
-taula_total_inrg = ajunta_taules(
-    taules_inrg
-)
-
-
-print("\n==========================================")
-print("RESUM BLOC 10")
-print("==========================================")
-
-
-print("\nPIPELINE A - OTSU")
-
-print(
-    "Blobs totals:",
-    len(taula_total_otsu)
-)
-
-print(
-    "Positius:",
-    np.sum(taula_total_otsu["etiqueta"]==1)
-)
-
-print(
-    "Negatius:",
-    np.sum(taula_total_otsu["etiqueta"]==0)
-)
-
-print(
-    "Ambigus:",
-    np.sum(taula_total_otsu["etiqueta"]==-1)
-)
-
-
-print("\nPIPELINE B - INRG")
-
-print(
-    "Blobs totals:",
-    len(taula_total_inrg)
-)
-
-print(
-    "Positius:",
-    np.sum(taula_total_inrg["etiqueta"]==1)
-)
-
-print(
-    "Negatius:",
-    np.sum(taula_total_inrg["etiqueta"]==0)
-)
-
-print(
-    "Ambigus:",
-    np.sum(taula_total_inrg["etiqueta"]==-1)
-)
-
-# ============================================================
-# BLOC 11 - SVM
-# COMPARACIO DELS DOS PIPELINES
-# ============================================================
-
-print("\n==========================================")
-print("BLOC 11 - SVM DELS DOS PIPELINES")
-print("==========================================")
-
-
-# Guardarem tots els resultats per calcular
-# una mitjana final.
-resum_final = []
-
-
-# ============================================================
-# FUNCIO DE PROVA D'UN PIPELINE
-# ============================================================
-
-def prova_svm_pipeline(
-    taula_total,
-    dades,
-    nom_test,
-    nom_pipeline
-):
-
-    print("\n------------------------------------------")
-    print(nom_pipeline)
-    print("Imatge test:",nom_test)
-    print("------------------------------------------")
-
-
-    # --------------------------------------------------------
-    # TRAIN / TEST PER IMATGE
-    # --------------------------------------------------------
-
-    taula_train,taula_test = separa_train_test_per_imatge(
-        taula_total,
-        [nom_test]
+    contrast=millora_contrast(
+        imatge_retina,
+        mascara_retina,
+        canals
     )
 
+    #Posicio 4 de millora_contrast = canal V després de CLAHE
+    v_clahe=contrast[4]
 
-    print(
-        "Blobs train:",
-        len(taula_train)
+    mascara_segmentacio=segmentar_adaptatiu(
+        v_clahe,
+        mascara_retina
     )
 
-    print(
-        "Blobs test:",
-        len(taula_test)
+    mascara_disc,mascara_sense_disc,mascara_morfologia,etiquetes,mascara_candidats=finalitza_pipeline(
+        mascara_segmentacio,
+        canals,
+        mascara_retina
     )
 
-
-    print(
-        "Positius train:",
-        np.sum(taula_train["etiqueta"]==1)
-    )
-
-    print(
-        "Negatius train:",
-        np.sum(taula_train["etiqueta"]==0)
-    )
-
-    print(
-        "Ambigus train:",
-        np.sum(taula_train["etiqueta"]==-1)
-=======
-    # --------------------------------------------------------
-    # WATERSHED
-    # --------------------------------------------------------
-
-    etiquetes_ws=aplicar_watershed(
-        mascara_morfologia,
-        distancia_minima=5
-    )
-
-    mascara_watershed=etiquetes_ws>0
+    return {
+        "canal":v_clahe,
+        "segmentacio":mascara_segmentacio,
+        "disc":mascara_disc,
+        "sense_disc":mascara_sense_disc,
+        "morfologia":mascara_morfologia,
+        "etiquetes":etiquetes,
+        "candidats":mascara_candidats
+    }
 
 
-    # --------------------------------------------------------
-    # BLOC 10 - FEATURES
-    # --------------------------------------------------------
+# -------------------------------------------------------------------------
+# FEATURES
+# -------------------------------------------------------------------------
+
+def crea_features_pipeline(imatge,canals,mascara_gt,resultat,
+                           id_imatge,nom_canal,nom_metode):
+    """Calcula les features dels blobs candidats."""
 
     taula=crea_taula_features(
         imatge,
         canals,
-        mascara_watershed,
+        resultat["candidats"],
         mascara_gt,
-        nom_imatge=nom_imatge,
-        nom_canal="G original",
-        nom_metode="Otsu + OD + morfologia + WS",
-        llindar_positiu=0.30,
-        llindar_negatiu=0.05
+        nom_imatge=id_imatge,
+        nom_canal=nom_canal,
+        nom_metode=nom_metode,
+        llindar_positiu=llindar_positiu,
+        llindar_negatiu=llindar_negatiu
     )
 
-    imprimeix_resum_features(
+    return taula
+
+
+# -------------------------------------------------------------------------
+# PROCESSAR TOT EL DATASET
+# -------------------------------------------------------------------------
+
+def processa_dataset(parelles):
+    """
+    Processa totes les imatges pels dos pipelines fins arribar
+    a les features que utilitzara el SVM.
+    """
+
+    dades={}
+
+    print("\n========================================")
+    print("PROCESSANT DATASET COMPLET")
+    print("========================================")
+
+    for i,parella in enumerate(parelles):
+
+        id_imatge=parella["id"]
+
+        print(str(i+1)+"/"+str(len(parelles)),id_imatge)
+
+        try:
+            imatge,gt,mascara_retina,imatge_retina,canals=carrega_imatge(
+                parella
+            )
+
+            resultat_paper=pipeline_paper(
+                imatge_retina,
+                canals,
+                mascara_retina
+            )
+
+            resultat_millor=pipeline_millor(
+                imatge_retina,
+                canals,
+                mascara_retina
+            )
+
+            taula_paper=crea_features_pipeline(
+                imatge,
+                canals,
+                gt,
+                resultat_paper,
+                id_imatge,
+                "V KMMRC",
+                "INRG"
+            )
+
+            taula_millor=crea_features_pipeline(
+                imatge,
+                canals,
+                gt,
+                resultat_millor,
+                id_imatge,
+                "V CLAHE",
+                "Adaptatiu"
+            )
+
+            dades[id_imatge]={
+                "parella":parella,
+                "imatge":imatge,
+                "gt":gt,
+                "paper":resultat_paper,
+                "millor":resultat_millor,
+                "taula_paper":taula_paper,
+                "taula_millor":taula_millor
+            }
+
+        except Exception as error:
+            print("ERROR en",id_imatge,":",error)
+
+    return dades
+
+
+# -------------------------------------------------------------------------
+# SVM
+# -------------------------------------------------------------------------
+
+def ajunta_taules_ids(dades,ids,nom_taula):
+    """Junta les taules de features de les imatges indicades."""
+
+    taules=[]
+
+    for id_imatge in ids:
+
+        taula=dades[id_imatge][nom_taula]
+
+        if len(taula)>0:
+            taules.append(taula)
+
+    if len(taules)==0:
+        return pd.DataFrame()
+
+    return pd.concat(
+        taules,
+        ignore_index=True
+    )
+
+
+def entrena_model_pipeline(dades,ids_train,nom_taula):
+    """Entrena un SVM només amb les imatges del grup de train."""
+
+    taula_train=ajunta_taules_ids(
+        dades,
+        ids_train,
+        nom_taula
+    )
+
+    if len(taula_train)==0:
+        raise ValueError("No hi ha blobs per entrenar el SVM")
+
+    escalador,selector,model=entrena_svm(
+        taula_train,
+        k_chi2=k_chi2
+    )
+
+    return escalador,selector,model
+
+
+def aplica_svm_imatge(dada,nom_pipeline,nom_taula,model_svm):
+    """Aplica el SVM sobre els candidats d'una imatge de test."""
+
+    escalador,selector,model=model_svm
+
+    taula=dada[nom_taula]
+    resultat=dada[nom_pipeline]
+
+    #Si no hi ha cap candidat el resultat final es una mascara buida
+    if len(taula)==0:
+        return np.zeros_like(dada["gt"],dtype=bool)
+
+    taula_predita=prediu_taula(
         taula,
-        nom_imatge
-    )
-
-    taules_features.append(taula)
-
-    # Guardem coses per reconstruir la mascara despres del SVM.
-    mascares_candidats[nom_imatge]=mascara_watershed
-    mascares_gt[nom_imatge]=mascara_gt
-    imatges_originals[nom_imatge]=imatge
-
-
-# ============================================================
-# SEGON: AJUNTEM TOTES LES TAULES
-# ============================================================
-
-taula_total=ajunta_taules(
-    taules_features
-)
-
-print("\n====================================")
-print("TAULA TOTAL FEATURES")
-print("====================================")
-
-print("Nombre total de blobs:",len(taula_total))
-
-print("Positius totals:",np.sum(taula_total["etiqueta"]==1))
-print("Negatius totals:",np.sum(taula_total["etiqueta"]==0))
-print("Ambigus totals:",np.sum(taula_total["etiqueta"]==-1))
-
-
-# ============================================================
-# TERCER: SEPAREM TRAIN I TEST PER IMATGE
-# ============================================================
-
-# Per fer una primera prova, deixem una imatge per test.
-# Pots canviar aquesta llista per provar una altra.
-imatges_test=[
-    "Exudate_DR2019_003.jpg"
-]
-
-taula_train,taula_test=separa_train_test_per_imatge(
-    taula_total,
-    imatges_test
-)
-
-print("\n====================================")
-print("SEPARACIO TRAIN / TEST")
-print("====================================")
-
-print("Imatges test:",imatges_test)
-print("Blobs train:",len(taula_train))
-print("Blobs test:",len(taula_test))
-
-print("Train positius:",np.sum(taula_train["etiqueta"]==1))
-print("Train negatius:",np.sum(taula_train["etiqueta"]==0))
-print("Train ambigus:",np.sum(taula_train["etiqueta"]==-1))
-
-print("Test positius:",np.sum(taula_test["etiqueta"]==1))
-print("Test negatius:",np.sum(taula_test["etiqueta"]==0))
-print("Test ambigus:",np.sum(taula_test["etiqueta"]==-1))
-
-
-# ============================================================
-# QUART: ENTRENEM EL SVM
-# ============================================================
-
-# k_chi2=3 segueix la idea inicial de la revisio avançada:
-# començar amb poques features seleccionades.
-escalador,selector,model=entrena_svm(
-    taula_train,
-    k_chi2=3
-)
-
-imprimeix_features_seleccionades(
-    selector
-)
-
-
-# ============================================================
-# CINQUE: AVALUEM EL SVM A NIVELL DE BLOBS
-# ============================================================
-
-taula_test_predita=prediu_taula(
-    taula_test,
-    escalador,
-    selector,
-    model
-)
-
-avalua_prediccio_blobs(
-    taula_test_predita
-)
-
-
-# ============================================================
-# SISE: RECONSTRUIM MASCARES I COMPAREM AMB GT
-# ============================================================
-
-for nom_test in imatges_test:
-
-    print("\n----------------------------------")
-    print("RESULTAT SVM:",nom_test)
-    print("----------------------------------")
-
-    mascara_candidata=mascares_candidats[nom_test]
-    mascara_gt=mascares_gt[nom_test]
-    imatge=imatges_originals[nom_test]
-
-    # Agafem nomes els blobs de la imatge de test actual.
-    taula_imatge=taula_test_predita[
-        taula_test_predita["nom_imatge"]==nom_test
-    ]
-
-    # Reconstruim la mascara final deixant nomes els blobs
-    # que el SVM ha classificat com exsudat.
-    mascara_svm=reconstrueix_mascara_svm(
-        mascara_candidata,
-        taula_imatge
->>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
-    )
-
-
-    # --------------------------------------------------------
-<<<<<<< HEAD
-    # ENTRENAR SVM
-    # --------------------------------------------------------
-
-    try:
-
-        escalador,selector,model = entrena_svm(
-            taula_train,
-            k_chi2=3
-        )
-
-    except ValueError as error:
-
-        print(
-            "ERROR ENTRENANT:",
-            error
-        )
-
-        return None
-
-
-    # Features seleccionades per Chi2.
-    imprimeix_features_seleccionades(
-        selector
-    )
-
-
-    # --------------------------------------------------------
-    # PREDICCIO DELS BLOBS
-    # --------------------------------------------------------
-
-    taula_predita = prediu_taula(
-        taula_test,
         escalador,
         selector,
         model
     )
 
-
-    avalua_prediccio_blobs(
+    mascara_final=reconstrueix_mascara_svm(
+        resultat["candidats"],
         taula_predita
     )
 
-
-    # --------------------------------------------------------
-    # RECONSTRUIR MASCARA
-    # --------------------------------------------------------
-
-    etiquetes = dades[
-        nom_test
-    ]["etiquetes"]
+    return mascara_final
 
 
-    mascara_gt = dades[
-        nom_test
-    ]["gt"]
+# -------------------------------------------------------------------------
+# VISUALITZACIO
+# -------------------------------------------------------------------------
 
+def mostra_pipeline(dada,mascara_final,nom_pipeline):
+    """Mostra tots els passos d'un pipeline per una imatge."""
 
-    mascara_abans = dades[
-        nom_test
-    ]["candidats"]
+    if not mostrar_figures:
+        return
 
+    if nom_pipeline=="paper":
+        titol="PIPELINE PAPER - KMMRC + INRG"
+        titol_canal="V KMMRC"
+        titol_segmentacio="INRG"
 
-    mascara_svm = reconstrueix_mascara_svm(
-        etiquetes,
-        taula_predita
+    else:
+        titol="PIPELINE MILLOR - V CLAHE + ADAPTATIU"
+        titol_canal="V CLAHE"
+        titol_segmentacio="Adaptatiu"
+
+    resultat=dada[nom_pipeline]
+
+    metriques=calcular_metriques(
+        mascara_final,
+        dada["gt"]
     )
 
-
-    # --------------------------------------------------------
-    # METRIQUES PIXEL A PIXEL
-    # --------------------------------------------------------
-
-    metriques_abans = calcular_metriques(
-        mascara_abans,
-        mascara_gt
-    )
-
-
-    metriques_svm = calcular_metriques(
-=======
-    # METRIQUES ABANS I DESPRES DEL SVM
-    # --------------------------------------------------------
-
-    metriques_abans=calcular_metriques(
-        mascara_candidata,
-        mascara_gt
-    )
-
-    metriques_despres=calcular_metriques(
-
-        mascara_svm,
-        mascara_gt
-    )
-
-
-
-    print("\nMETRIQUES ABANS DEL SVM")
-
-    imprimir_metriques(
-        nom_pipeline+" abans SVM",
-        metriques_abans
-    )
-
-
-    print("\nMETRIQUES DESPRES DEL SVM")
-
-    imprimir_metriques(
-        nom_pipeline+" + SVM",
-        metriques_svm
-    )
-
-
-    return {
-
-        "mascara_abans":mascara_abans,
-
-        "mascara_svm":mascara_svm,
-
-        "metriques_abans":metriques_abans,
-
-        "metriques_svm":metriques_svm
-    }
-
-
-# ============================================================
-# LEAVE-ONE-IMAGE-OUT
-# ============================================================
-
-for nom_test,nom_gt in imatges:
-
-    print("\n\n##########################################")
-    print("IMATGE DE TEST:",nom_test)
-    print("##########################################")
-
-
-    # --------------------------------------------------------
-    # PIPELINE A
-    # --------------------------------------------------------
-
-    resultat_otsu = prova_svm_pipeline(
-
-        taula_total_otsu,
-
-        dades_otsu,
-
-        nom_test,
-
-        "PIPELINE A - OTSU"
-
-    imprimir_metriques(
-        "Abans SVM",
-        metriques_abans
-    )
-
-    imprimir_metriques(
-        "Despres SVM",
-        metriques_despres>>>>>>> c4eff620fe55a851d55432915c358e766d1869cc
-    )
-
-
-    # --------------------------------------------------------
-
-    # PIPELINE B
-    # --------------------------------------------------------
-
-    resultat_inrg = prova_svm_pipeline(
-
-        taula_total_inrg,
-
-        dades_inrg,
-
-        nom_test,
-
-        "PIPELINE B - INRG"
-    )
-
-
-    # Si algun SVM no s'ha pogut entrenar,
-    # passem a la següent imatge.
-    if resultat_otsu is None or resultat_inrg is None:
-
-        continue
-
-
-    # --------------------------------------------------------
-    # GUARDAR RESULTATS
-    # --------------------------------------------------------
-
-    resum_final.append({
-
-        "imatge":nom_test,
-
-        "otsu_abans":resultat_otsu["metriques_abans"],
-
-        "otsu_svm":resultat_otsu["metriques_svm"],
-
-        "inrg_abans":resultat_inrg["metriques_abans"],
-
-        "inrg_svm":resultat_inrg["metriques_svm"]
-    })
-
-
-    # --------------------------------------------------------
-    # VISUALITZACIO FINAL
-    # --------------------------------------------------------
-
-    imatge_original = dades_otsu[
-        nom_test
-    ]["imatge"]
-
-
-    mascara_gt = dades_otsu[
-        nom_test
-    ]["gt"]
-
-
-    plt.figure(
-        figsize=(16,9)
-    )
-
+    plt.figure(figsize=(18,9))
 
     plt.suptitle(
-        "COMPARACIO PIPELINES - "+nom_test,
-        fontsize=16
+        titol+" - "+dada["parella"]["id"]+
+        " | Dice="+str(round(metriques["dice"],3))+
+        " | IoU="+str(round(metriques["iou"],3)),
+        fontsize=15
     )
 
-
-    # ORIGINAL
-    plt.subplot(2,3,1)
-
-    plt.imshow(
-        imatge_original
-    )
-
-    plt.title(
-        "Original"
-    )
-
-    plt.axis(
-        "off"
-    )
-
-
-    # GROUND TRUTH
-    plt.subplot(2,3,2)
-
-    plt.imshow(
-        mascara_gt,
-        cmap="gray"
-    )
-
-    plt.title(
-        "Ground Truth"
-    )
-
-    plt.axis(
-        "off"
-    )
-
-
-    # OTSU ABANS DEL SVM
-    plt.subplot(2,3,3)
-
-    plt.imshow(
-        resultat_otsu["mascara_abans"],
-        cmap="gray"
-    )
-
-    plt.title(
-        "Otsu abans SVM"
-    )
-
-    plt.axis(
-        "off"
-    )
-
-
-    # OTSU DESPRES SVM
-    plt.subplot(2,3,4)
-
-    plt.imshow(
-        resultat_otsu["mascara_svm"],
-        cmap="gray"
-    )
-
-    plt.title(
-        "Otsu + SVM"
-    )
-
-    plt.axis(
-        "off"
-    )
-
-
-    # INRG ABANS DEL SVM
-    plt.subplot(2,3,5)
-
-    plt.imshow(
-        resultat_inrg["mascara_abans"],
-        cmap="gray"
-    )
-
-    plt.title(
-        "INRG abans SVM"
-    )
-
-    plt.axis(
-        "off"
-    )
-
-
-    # INRG DESPRES DEL SVM
-    plt.subplot(2,3,6)
-
-    plt.imshow(
-        resultat_inrg["mascara_svm"],
-        cmap="gray"
-    )
-
-    plt.title(
-        "INRG + SVM"
-    )
-
-    plt.axis(
-        "off"
-    )
-
-
-    plt.tight_layout(
-        rect=[0,0,1,0.94]
-    )
-
-    plt.show()
-    
-
-    # VISUALITZACIO
-    # --------------------------------------------------------
-    # Mantenim la representacio de les proves:
-    # Ground Truth en gris i mascara obtinguda en verd.
-
-    plt.figure(figsize=(14,5))
-
-    plt.suptitle(
-        "BLOC 11 - SVM - "+nom_test,
-        fontsize=16
-    )
-
-    plt.subplot(1,3,1)
-    plt.imshow(imatge)
+    plt.subplot(2,4,1)
+    plt.imshow(dada["imatge"])
     plt.title("Original")
     plt.axis("off")
 
-    plt.subplot(1,3,2)
-    plt.imshow(mascara_gt,cmap="gray",alpha=1)
-    plt.imshow(mascara_candidata,cmap="Greens",alpha=0.5)
-    plt.title("Abans SVM")
+    plt.subplot(2,4,2)
+    plt.imshow(dada["gt"],cmap="gray")
+    plt.title("Ground Truth")
     plt.axis("off")
 
-    plt.subplot(1,3,3)
-    plt.imshow(mascara_gt,cmap="gray",alpha=1)
-    plt.imshow(mascara_svm,cmap="Greens",alpha=0.5)
-    plt.title("Despres SVM")
+    plt.subplot(2,4,3)
+    plt.imshow(resultat["canal"],cmap="gray")
+    plt.title(titol_canal)
     plt.axis("off")
 
-    plt.tight_layout(
-        rect=[0,0,1,0.90]
-    )
+    plt.subplot(2,4,4)
+    plt.imshow(resultat["segmentacio"],cmap="gray")
+    plt.title(titol_segmentacio)
+    plt.axis("off")
 
+    plt.subplot(2,4,5)
+    plt.imshow(resultat["sense_disc"],cmap="gray")
+    plt.title("Sense disc optic")
+    plt.axis("off")
+
+    plt.subplot(2,4,6)
+    plt.imshow(resultat["morfologia"],cmap="gray")
+    plt.title("Morfologia")
+    plt.axis("off")
+
+    plt.subplot(2,4,7)
+    plt.imshow(resultat["etiquetes"],cmap="nipy_spectral")
+    plt.title("Watershed")
+    plt.axis("off")
+
+    plt.subplot(2,4,8)
+    plt.imshow(mascara_final,cmap="gray")
+    plt.title("Resultat final SVM")
+    plt.axis("off")
+
+    plt.tight_layout(rect=[0,0,1,0.94])
     plt.show()
 
+
+# -------------------------------------------------------------------------
+# METRIQUES GLOBALS
+# -------------------------------------------------------------------------
+
+def resum_metriques(llista):
+    """Calcula la mitjana i la desviacio de cada metrica."""
+
+    claus=["precisio","recall","f1","dice","iou","accuracy"]
+
+    mitjana={}
+    desviacio={}
+
+    for clau in claus:
+
+        valors=[metriques[clau] for metriques in llista]
+
+        mitjana[clau]=np.mean(valors)
+        desviacio[clau]=np.std(valors)
+
+    return mitjana,desviacio
+
+
+def imprimeix_resum_global(nom,llista):
+    """Imprimeix les metriques globals en format mitjana +/- desviacio."""
+
+    mitjana,desviacio=resum_metriques(llista)
+
+    print("\n========================================")
+    print(nom)
+    print("========================================")
+
+    for clau in ["precisio","recall","f1","dice","iou","accuracy"]:
+
+        print(
+            clau.capitalize()+":",
+            round(mitjana[clau],4),
+            "+/-",
+            round(desviacio[clau],4)
+        )
+
+
+# -------------------------------------------------------------------------
+# AVALUACIO DE TOT EL DATASET
+# -------------------------------------------------------------------------
+
+def avalua_dataset_complet(dades):
+    """
+    Avalua els dos pipelines amb validacio creuada per imatge.
+
+    Cada imatge queda com a test una vegada. Al final busquem les
+    dues imatges amb millor Dice del pipeline final i mostrem els
+    dos pipelines complets sobre aquestes mateixes imatges.
+    """
+
+    ids=np.array(sorted(dades.keys()))
+
+    if len(ids)<n_folds:
+        raise ValueError(
+            "No hi ha prou imatges per fer "+str(n_folds)+" folds"
+        )
+
+    kfold=KFold(
+        n_splits=n_folds,
+        shuffle=True,
+        random_state=0
+    )
+
+    metriques_paper=[]
+    metriques_millor=[]
+
+    resultats={}
+
+    print("\n========================================")
+    print("AVALUACIO GLOBAL - "+str(n_folds)+" FOLDS")
+    print("========================================")
+
+    for numero_fold,(index_train,index_test) in enumerate(kfold.split(ids)):
+
+        ids_train=ids[index_train].tolist()
+        ids_test=ids[index_test].tolist()
+
+        print(
+            "\nFold",
+            numero_fold+1,
+            "- train:",
+            len(ids_train),
+            "test:",
+            len(ids_test)
+        )
+
+        model_paper=entrena_model_pipeline(
+            dades,
+            ids_train,
+            "taula_paper"
+        )
+
+        model_millor=entrena_model_pipeline(
+            dades,
+            ids_train,
+            "taula_millor"
+        )
+
+        for id_imatge in ids_test:
+
+            dada=dades[id_imatge]
+
+            mascara_paper=aplica_svm_imatge(
+                dada,
+                "paper",
+                "taula_paper",
+                model_paper
+            )
+
+            mascara_millor=aplica_svm_imatge(
+                dada,
+                "millor",
+                "taula_millor",
+                model_millor
+            )
+
+            metriques_imatge_paper=calcular_metriques(
+                mascara_paper,
+                dada["gt"]
+            )
+
+            metriques_imatge_millor=calcular_metriques(
+                mascara_millor,
+                dada["gt"]
+            )
+
+            metriques_paper.append(
+                metriques_imatge_paper
+            )
+
+            metriques_millor.append(
+                metriques_imatge_millor
+            )
+
+            #Guardem el resultat de cada imatge perquè després podem
+            #ordenar-les sense tornar a entrenar el SVM
+            resultats[id_imatge]={
+                "metriques_paper":metriques_imatge_paper,
+                "metriques_millor":metriques_imatge_millor,
+                "mascara_paper":mascara_paper,
+                "mascara_millor":mascara_millor
+            }
+
+    #Resultats mitjans de tot el dataset
+    imprimeix_resum_global(
+        "PIPELINE PAPER - MITJANA GLOBAL",
+        metriques_paper
+    )
+
+    imprimeix_resum_global(
+        "PIPELINE MILLOR - MITJANA GLOBAL",
+        metriques_millor
+    )
+
+    #Ordenem les imatges segons el Dice del pipeline final
+    ranking=sorted(
+        resultats.keys(),
+        key=lambda id_imatge:resultats[id_imatge]["metriques_millor"]["dice"],
+        reverse=True
+    )
+
+    millors=ranking[:2]
+
+    print("\n========================================")
+    print("TOP 2 IMATGES - PIPELINE MILLOR")
+    print("========================================")
+
+    for i,id_imatge in enumerate(millors):
+
+        m=resultats[id_imatge]["metriques_millor"]
+
+        print(
+            str(i+1)+".",
+            id_imatge,
+            "| Precision:",round(m["precisio"],4),
+            "| Recall:",round(m["recall"],4),
+            "| Dice:",round(m["dice"],4),
+            "| IoU:",round(m["iou"],4)
+        )
+
+    #També mostrem les millors del pipeline paper com a referencia
+    ranking_paper=sorted(
+        resultats.keys(),
+        key=lambda id_imatge:resultats[id_imatge]["metriques_paper"]["dice"],
+        reverse=True
+    )
+
+    print("\n========================================")
+    print("TOP 2 IMATGES - PIPELINE PAPER")
+    print("========================================")
+
+    for i,id_imatge in enumerate(ranking_paper[:2]):
+
+        m=resultats[id_imatge]["metriques_paper"]
+
+        print(
+            str(i+1)+".",
+            id_imatge,
+            "| Precision:",round(m["precisio"],4),
+            "| Recall:",round(m["recall"],4),
+            "| Dice:",round(m["dice"],4),
+            "| IoU:",round(m["iou"],4)
+        )
+
+    #Per les dues millors imatges del pipeline final mostrem
+    #els dos pipelines. En total obtenim quatre figures.
+    print("\n========================================")
+    print("FIGURES DE LES 2 MILLORS IMATGES")
+    print("========================================")
+
+    for id_imatge in millors:
+
+        dada=dades[id_imatge]
+
+        print("\n----------------------------------------")
+        print("IMATGE:",id_imatge)
+        print("----------------------------------------")
+
+        imprimir_metriques(
+            "Pipeline paper",
+            resultats[id_imatge]["metriques_paper"]
+        )
+
+        imprimir_metriques(
+            "Pipeline millor",
+            resultats[id_imatge]["metriques_millor"]
+        )
+
+        mostra_pipeline(
+            dada,
+            resultats[id_imatge]["mascara_paper"],
+            "paper"
+        )
+
+        mostra_pipeline(
+            dada,
+            resultats[id_imatge]["mascara_millor"],
+            "millor"
+        )
+
+    return millors,resultats
+
+
+# -------------------------------------------------------------------------
+# MAIN
+# -------------------------------------------------------------------------
+
+if __name__=="__main__":
+
+    parelles=llista_imatges_dataset()
+
+    print("Nombre total de parelles trobades:",len(parelles))
+
+    if len(parelles)==0:
+        raise ValueError(
+            "No s'han trobat imatges amb Ground Truth"
+        )
+
+    #Processem totes les imatges pels dos pipelines
+    dades=processa_dataset(parelles)
+
+    print("\nImatges processades correctament:",len(dades))
+
+    if len(dades)<n_folds:
+        raise ValueError(
+            "No hi ha prou imatges processades per fer la validacio"
+        )
+
+    #Fem l'avaluacio global i busquem automaticament
+    #les dues imatges amb millor resultat
+    millors,resultats=avalua_dataset_complet(dades)
+
+    print("\n========================================")
+    print("IMATGES RECOMANADES PER LES FIGURES")
+    print("========================================")
+
+    for id_imatge in millors:
+        print(id_imatge)
+
+    print("\nMain final acabat.")
