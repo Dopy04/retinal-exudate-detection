@@ -360,6 +360,175 @@ def columnes_svm():
 
     return columnes
     
+#Visualitzacio
+
+if __name__=="__main__":
+
+    #Prova Bloc 9: utilitzem una imatge del dataset per comprovar
+    #visualment com una mascara candidata es separa en blobs
+    #i com aquests blobs queden etiquetats segons el Ground Truth
+
+    from pathlib import Path
+    import matplotlib.pyplot as plt
+
+    import B2_preprocessament as prep
+    from B4_millora_contrast import millora_contrast
+    from B4_segmentacio import obtenir_mascares_baseline
+    from B6_disc_optic import detecta_disc_optic,elimina_disc_optic
+
+    #Escollim el dataset i la imatge que volem provar
+    #Per provar una altra només cal canviar aquests dos valors
+    dataset="DR2019"
+    numero=3
+
+    ruta_projecte=Path(__file__).resolve().parent.parent
+    ruta_dades=ruta_projecte/"data_samples"
+
+    #Obtenim automaticament la imatge i el seu Ground Truth
+    ruta_imatge,ruta_gt=prep.obtenir_rutes_dataset(
+        ruta_dades,dataset,numero)
+
+    #Fem el preprocessament i obtenim la mascara de retina,
+    #la imatge sense fons i els canals originals
+    imatge,mascara_gt,mascara_retina,imatge_retina,canals=prep.preprocessa_imatge(
+        ruta_imatge,ruta_gt)
+
+    #Apliquem la millora de contrast del Bloc 4
+    contrast=millora_contrast(
+        imatge_retina,
+        mascara_retina,
+        canals)
+
+    #Agafem el canal V CLAHE perquè és el que hem vist que funciona bé
+    #per generar candidats d'exsudats
+    canal_v_clahe=contrast[4]
+
+    #Detectem el disc optic per eliminar-lo de la mascara candidata
+    canal_r=canals[0]
+    canal_v=canals[6]
+
+    canal_disc=0.5*canal_r+0.5*canal_v
+    canal_disc=np.clip(canal_disc,0.0,1.0)
+
+    canal_suau,mascara_disc_optic,mascara_disc=detecta_disc_optic(
+        canal_disc,
+        mascara_retina,
+        percentil=98,
+        sigma=2)
+
+    #Fem una segmentacio candidata.
+    #Utilitzem Adaptatiu sobre V CLAHE perquè és una de les combinacions
+    #que millor resultat ens ha donat després amb el SVM
+    mascares=obtenir_mascares_baseline(
+        canal_v_clahe,
+        mascara_retina)
+
+    mascara_candidata=mascares["Adaptatiu"]
+
+    #Eliminem el disc optic de la mascara candidata
+    mascara_candidata=elimina_disc_optic(
+        mascara_candidata,
+        mascara_disc)
+
+    #Creem la taula de features.
+    #Cada fila de la taula correspon a un blob diferent
+    taula=crea_taula_features(
+        imatge,
+        canals,
+        mascara_candidata,
+        mascara_gt,
+        nom_imatge=str(numero).zfill(3)+".jpg",
+        nom_canal="V CLAHE",
+        nom_metode="Adaptatiu",
+        llindar_positiu=0.25,
+        llindar_negatiu=0.05)
+
+    #Separem la mascara candidata en blobs per poder visualitzar-los
+    etiquetes=label(mascara_candidata,connectivity=2)
+
+    #Preparem tres mascares noves per separar visualment
+    #els blobs positius, negatius i ambigus
+    mascara_positius=np.zeros_like(mascara_candidata,dtype=bool)
+    mascara_negatius=np.zeros_like(mascara_candidata,dtype=bool)
+    mascara_ambigus=np.zeros_like(mascara_candidata,dtype=bool)
+
+    for i in range(len(taula)):
+
+        blob_id=int(taula.iloc[i]["blob_id"])
+        etiqueta=int(taula.iloc[i]["etiqueta"])
+
+        if etiqueta==1:
+            mascara_positius=mascara_positius | (etiquetes==blob_id)
+
+        elif etiqueta==0:
+            mascara_negatius=mascara_negatius | (etiquetes==blob_id)
+
+        else:
+            mascara_ambigus=mascara_ambigus | (etiquetes==blob_id)
+
+    print("\n======================================")
+    print("PROVA BLOC 9")
+    print("Dataset:",dataset)
+    print("Imatge:",str(numero).zfill(3))
+    print("======================================")
+
+    imprimeix_resum_features(
+        taula,
+        "V CLAHE + Adaptatiu")
+
+    #Mostrem la mascara candidata, els blobs separats i les etiquetes
+    #que venen del solapament amb el Ground Truth
+    plt.figure(figsize=(16,8))
+    plt.suptitle(
+        "PROVA BLOC 9 - "+dataset+" "+str(numero).zfill(3),
+        fontsize=16)
+
+    plt.subplot(2,4,1)
+    plt.imshow(imatge)
+    plt.title("Original")
+    plt.axis("off")
+
+    plt.subplot(2,4,2)
+    plt.imshow(mascara_candidata,cmap="gray")
+    plt.title("Mascara candidata")
+    plt.axis("off")
+
+    plt.subplot(2,4,3)
+    plt.imshow(mascara_gt,cmap="gray")
+    plt.title("Ground Truth")
+    plt.axis("off")
+
+    plt.subplot(2,4,4)
+    plt.imshow(etiquetes,cmap="nipy_spectral")
+    plt.title("Blobs etiquetats")
+    plt.axis("off")
+
+    plt.subplot(2,4,5)
+    plt.imshow(mascara_positius,cmap="gray")
+    plt.title("Blobs positius")
+    plt.axis("off")
+
+    plt.subplot(2,4,6)
+    plt.imshow(mascara_negatius,cmap="gray")
+    plt.title("Blobs negatius")
+    plt.axis("off")
+
+    plt.subplot(2,4,7)
+    plt.imshow(mascara_ambigus,cmap="gray")
+    plt.title("Blobs ambigus")
+    plt.axis("off")
+
+    plt.subplot(2,4,8)
+    plt.imshow(imatge)
+    plt.imshow(mascara_gt,cmap="Reds",alpha=0.45)
+    plt.imshow(mascara_candidata,cmap="Greens",alpha=0.45)
+    plt.title("GT + candidata")
+    plt.axis("off")
+
+    plt.tight_layout(rect=[0,0,1,0.92])
+    plt.show()
+    
+    
 # Comentari IA:
 # Hem utilitzat IA com a suport per organitzar aquesta part del projecte,
 # ja que treballem amb una gran quantitat d'informacio per cada blob:

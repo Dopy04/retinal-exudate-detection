@@ -229,6 +229,16 @@ def classifica_mascara(mascara_candidats,taula_features,escalador,selector,model
 
     return mascara_svm,taula_predita
 
+
+
+
+"""
+No  farem cap prova de funcionament a aquest bloc perquè el correcte funcionament
+significa entrenar un SVM amb les imatges, d'una manera idèntica a com fem al main.py 
+per exemple, de manera que repetirho aquí seria d'alguna manera repetirse. 
+per veure el correcte funcionament el millor és anar al main i veure ahi el resultat
+"""
+
 # Comentari IA:
 # Hem utilitzat IA com a suport sobretot en la part d'entrenament del SVM,
 # ja que al principi no teniem clar com preparar les dades ni quin ordre
