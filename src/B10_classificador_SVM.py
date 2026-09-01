@@ -244,10 +244,6 @@ per veure el correcte funcionament el millor és anar al main i veure ahi el res
 # ja que al principi no teniem clar com preparar les dades ni quin ordre
 # seguir entre la normalitzacio, la seleccio de features i l'entrenament.
 #
-# Ens ha servit per entendre com separar correctament X i y, per que era
-# necessari normalitzar les dades abans d'aplicar Chi2 i com utilitzar
-# les features seleccionades per entrenar després el classificador.
-#
-# També ens ha ajudat a entendre com tornar a aplicar exactament el mateix
-# escalador i selector sobre les dades de test i com reconstruir finalment
-# la mascara a partir dels blobs classificats pel SVM.
+# Ens ha servit per entendre com separar correctament X i y abans d'aplicar Chi2 i com 
+# classificar segpns les features seleccionades. Per com reconstruir finalment
+# la mascara a partir dels blobs classificats pel SVM també ha sigut necessaria
