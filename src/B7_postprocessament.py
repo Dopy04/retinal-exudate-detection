@@ -48,7 +48,7 @@ def tancar_mascara(mascara,radi=2):
 
     mascara=mascara.astype(bool)
 
-    # Creem un element circular que utilitzarem per aplicar el closing
+    #Creem un element circular que utilitzarem per aplicar el closing
     element=morphology.disk(radi)
 
     mascara_tancada=morphology.binary_closing(mascara,element)
@@ -88,7 +88,7 @@ def eliminar_forats_petits(mascara,mida_forat=50):
 
     mascara=mascara.astype(bool)
 
-    # Omplim només els forats que siguin més petits que mida_forat
+    #Omplim només els forats que siguin més petits que mida_forat
     mascara_neta=morphology.remove_small_holes(mascara,
                                                area_threshold=mida_forat)
 
@@ -108,13 +108,13 @@ def netejar_mascara(mascara,mida_minima=50,mida_forat=50):
 
     mascara=mascara.astype(bool)
 
-    # Eliminem petits blobs que poden ser soroll
+    #Eliminem petits blobs que poden ser soroll
     mascara=eliminar_objectes_petits(mascara,mida_minima)
 
-    # Tanquem petites separacions que hi hagi dins dels blobs
+    #Tanquem petites separacions que hi hagi dins dels blobs
     mascara=tancar_mascara(mascara,radi=2)
 
-    # Omplim els petits forats que hagin quedat dins de les regions
+    #Omplim els petits forats que hagin quedat dins de les regions
     mascara=eliminar_forats_petits(mascara,mida_forat)
 
     return mascara
@@ -127,7 +127,7 @@ if __name__=="__main__":
     from pathlib import Path
     import matplotlib.pyplot as plt
     import B2_preprocessament as prep
-    from B3_segmentacio import segmentar_otsu
+    from B4_segmentacio import segmentar_otsu
     from B1_metriques import calcular_metriques,imprimir_metriques
 
     #Escollim el dataset i la imatge que volem provar

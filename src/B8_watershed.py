@@ -42,9 +42,7 @@ def trobar_marcadors(distancia,mascara,distancia_minima=5):
     entre dos marcadors diferents.
     """
     #Busquem els punts amb una distancia local més gran dins de la mascara
-    coordenades=feature.peak_local_max(
-        distancia,
-        labels=mascara,
+    coordenades=feature.peak_local_max(distancia,labels=mascara,
         min_distance=distancia_minima)
 
     #Creem una imatge buida amb la mateixa mida que la mascara
@@ -96,7 +94,7 @@ if __name__=="__main__":
     from pathlib import Path
     import matplotlib.pyplot as plt
     import B2_preprocessament as prep
-    from B3_segmentacio import segmentar_otsu
+    from B4_segmentacio import segmentar_otsu
     from B7_postprocessament import netejar_mascara
     from B1_metriques import calcular_metriques,imprimir_metriques
 
@@ -120,9 +118,7 @@ if __name__=="__main__":
 
     #Fem primer una segmentacio amb Otsu i apliquem la morfologia
     #per obtenir la mascara que entrarà al Watershed
-    mascara_otsu=segmentar_otsu(
-        canal_g,
-        mascara_retina)
+    mascara_otsu=segmentar_otsu(canal_g,mascara_retina)
 
     mascara_morfologia=netejar_mascara(mascara_otsu)
 
@@ -136,13 +132,9 @@ if __name__=="__main__":
     #a una mascara binaria
     mascara_watershed=etiquetes>0
 
-    metriques_abans=calcular_metriques(
-        mascara_morfologia,
-        mascara_gt)
+    metriques_abans=calcular_metriques(mascara_morfologia,mascara_gt)
 
-    metriques_despres=calcular_metriques(
-        mascara_watershed,
-        mascara_gt)
+    metriques_despres=calcular_metriques(mascara_watershed,mascara_gt)
 
     print("\n======================================")
     print("PROVA BLOC 8")

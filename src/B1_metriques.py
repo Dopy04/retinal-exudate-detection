@@ -13,7 +13,6 @@ També calculem F1 i Accuracy com informació complementaria.
 
 import numpy as np
 
-
 def passar_a_gris(imatge):
     """
     Si la imatge té tres canals RGB la passem a escala de grisos
@@ -37,7 +36,7 @@ def passar_a_gris(imatge):
 
 def binaritzar_mascara(mascara):
     """
-    Convertim qualsevol mascara a tipus boolea.
+    Convertim qualsevol mascara a tipus booleá.
     Les mascares poden venir en RGB, en escala de grisos,
     amb valors entre 0-1 o amb valors entre 0-255.
     
@@ -186,8 +185,7 @@ def comparar_metodes(diccionari_mascares,mascara_gt,mascara_avaluacio=None):
         resultats[nom_metode]=calcular_metriques(
         mascara_predita,
         mascara_gt,
-        mascara_avaluacio
-        )
+        mascara_avaluacio)
 
     # Retornem un diccionari amb les metriques de tots els metodes
     # per poder comparar-los posteriorment.

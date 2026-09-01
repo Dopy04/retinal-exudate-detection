@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+ # -*- coding: utf-8 -*-
 """
 Created on Wed Aug 26 23:42:52 2026
 
@@ -41,7 +41,7 @@ def segmentar_nick(canal,mascara_retina=None,mida_finestra=95,k=-0.10):
     NICK calcula un llindar diferent per cada zona de la imatge
     utilitzant la mitjana i la variacio local dels pixels.
 
-     La mida_finestra defineix la zona local que utilitzem per calcular
+    La mida_finestra defineix la zona local que utilitzem per calcular
     el llindar i k és el parametre del metode NICK.
     """
 
@@ -127,6 +127,7 @@ def segmentar_inrg(canal,mascara_retina=None,mida_finestra=95,k=-0.2,
             break
 
     return mascara
+
 if __name__=="__main__":
 
     #Prova Bloc 5: apliquem NICK i INRG sobre una imatge real

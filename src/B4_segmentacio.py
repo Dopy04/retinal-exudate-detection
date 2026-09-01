@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Aug 25 17:02:02 2026
-
-@author: gurpi
-"""
 
 """
 Bloc 4:Segmentacio basica.
@@ -270,13 +265,13 @@ def segmentar_kmeans_canal(canal,mascara_retina=None,n_clusters=3):
 
     etiquetes=model.fit_predict(dades)
 
-    # Cada centre representa la intensitat mitjana d'un cluster
+    #Cada centre representa la intensitat mitjana d'un cluster
     centres=model.cluster_centers_.ravel()
 
-    # Seleccionem el cluster amb el centre més brillant
+    #Seleccionem el cluster amb el centre més brillant
     cluster_brilant=np.argmax(centres)
 
-    # Reconstruim la mascara amb la mida de la imatge original
+    #Reconstruim la mascara amb la mida de la imatge original
     mascara=np.zeros((alcada,amplada),dtype=bool)
 
     if mascara_retina is not None:
@@ -298,7 +293,7 @@ def obtenir_mascares_baseline(canal,mascara_retina=None):
     directament al bloc de metriques i comparar els resultats.
     """
 
-    # Apliquem tots els metodes sobre exactament la mateixa entrada
+    #Apliquem tots els metodes sobre exactament la mateixa entrada
     mascara_otsu=segmentar_otsu(canal,mascara_retina)
 
     mascara_fix=segmentar_llindar_fix(canal,llindar=0.7,
@@ -310,7 +305,7 @@ def obtenir_mascares_baseline(canal,mascara_retina=None):
 
     mascara_kmeans=segmentar_kmeans_canal(canal,mascara_retina,n_clusters=3)
 
-    # Guardem cada mascara amb el nom del metode que l'ha generat
+    #Guardem cada mascara amb el nom del metode que l'ha generat
     mascares={
         "Otsu":mascara_otsu,
         "Llindar_fix":mascara_fix,
