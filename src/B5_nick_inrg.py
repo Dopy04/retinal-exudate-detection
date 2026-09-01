@@ -1,9 +1,4 @@
  # -*- coding: utf-8 -*-
-"""
-Created on Wed Aug 26 23:42:52 2026
-
-@author: gurpi
-"""
 
 """
 Bloc 5: segmentacio amb NICK i INRG.

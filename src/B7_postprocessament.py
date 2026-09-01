@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Thu Aug 27 18:08:50 2026
-
-@author: gurpi
-"""
 
 """
 Bloc 7:Morfologia matematica.
