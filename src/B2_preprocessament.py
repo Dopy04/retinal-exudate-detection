@@ -236,50 +236,89 @@ def obtenir_rutes_dataset(ruta_dades,dataset,numero):
 
     return ruta_imatge,ruta_gt
 
-# -------------------------------------------------------------------------
-# 5. Visualització bàsica
-# -------------------------------------------------------------------------
 
-def visualitza_preprocessament(imatge, mascara_gt, mascara_retina, canals):
-    """
-    Mostrem els resultats principals del preprocessament.
-    """
-    g = canals[1]
-    luma = canals[3]
-    v = canals[6]
 
-    plt.figure(figsize=(12, 8))
+if __name__=="__main__":
 
-    plt.subplot(2, 3, 1)
+    #Prova Bloc 2: utilitzem una imatge del dataset per comprovar
+    #visualment el preprocessament i els canals que obtenim
+
+    #Escollim el dataset i la imatge que volem provar
+    #Per provar una altra només cal canviar aquests dos valors
+    dataset="DR2019"
+    numero=3
+
+    ruta_projecte=Path(__file__).resolve().parent.parent
+    ruta_dades=ruta_projecte/"data_samples"
+
+    #Obtenim automaticament la imatge i el seu Ground Truth
+    ruta_imatge,ruta_gt=obtenir_rutes_dataset(
+        ruta_dades,dataset,numero)
+
+    #Fem el preprocessament i obtenim la imatge original,
+    #el Ground Truth, la mascara de retina, la imatge sense fons
+    #i els canals que farem servir als blocs següents
+    imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
+        ruta_imatge,ruta_gt)
+
+    #Agafem els canals principals que volem mostrar
+    canal_r=canals[0]
+    canal_g=canals[1]
+    canal_b=canals[2]
+    luma=canals[3]
+
+    print("\n======================================")
+    print("PROVA BLOC 2")
+    print("Dataset:",dataset)
+    print("Imatge:",str(numero).zfill(3))
+    print("======================================")
+
+    #Mostrem la imatge original, el Ground Truth, la mascara de retina,
+    #la imatge de retina i alguns canals principals
+    plt.figure(figsize=(16,8))
+    plt.suptitle(
+        "PROVA BLOC 2 - "+dataset+" "+str(numero).zfill(3),
+        fontsize=16)
+
+    plt.subplot(2,4,1)
     plt.imshow(imatge)
     plt.title("Original")
     plt.axis("off")
 
-    plt.subplot(2, 3, 2)
-    plt.imshow(mascara_gt, cmap="gray")
-    plt.title("Ground truth")
+    plt.subplot(2,4,2)
+    plt.imshow(mascara_gt,cmap="gray")
+    plt.title("Ground Truth")
     plt.axis("off")
 
-    plt.subplot(2, 3, 3)
-    plt.imshow(mascara_retina, cmap="gray")
+    plt.subplot(2,4,3)
+    plt.imshow(mascara_retina,cmap="gray")
     plt.title("Mascara retina")
     plt.axis("off")
 
-    plt.subplot(2, 3, 4)
-    plt.imshow(g, cmap="gray")
+    plt.subplot(2,4,4)
+    plt.imshow(imatge_retina)
+    plt.title("Imatge retina")
+    plt.axis("off")
+
+    plt.subplot(2,4,5)
+    plt.imshow(canal_r,cmap="gray")
+    plt.title("Canal R")
+    plt.axis("off")
+
+    plt.subplot(2,4,6)
+    plt.imshow(canal_g,cmap="gray")
     plt.title("Canal G")
     plt.axis("off")
 
-    plt.subplot(2, 3, 5)
-    plt.imshow(luma, cmap="gray")
+    plt.subplot(2,4,7)
+    plt.imshow(canal_b,cmap="gray")
+    plt.title("Canal B")
+    plt.axis("off")
+
+    plt.subplot(2,4,8)
+    plt.imshow(luma,cmap="gray")
     plt.title("Luma")
     plt.axis("off")
 
-    plt.subplot(2, 3, 6)
-    plt.imshow(v, cmap="gray")
-    plt.title("Canal V")
-    plt.axis("off")
-
-    plt.tight_layout()
+    plt.tight_layout(rect=[0,0,1,0.92])
     plt.show()
-

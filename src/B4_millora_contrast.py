@@ -206,92 +206,109 @@ def millora_contrast(imatge_retina,mascara_retina,canals):
 # Visualitzacio
 
 
-def visualitza_contrast(imatge_retina,canals,contrast,titol):
-    """
-    Mostra una comparacio visual dels canals originals i millorats.
-    """
+if __name__=="__main__":
 
+    #Prova Bloc 4: utilitzem una imatge del dataset per comprovar
+    #visualment els metodes de millora de contrast
+
+    from pathlib import Path
+    import B2_preprocessament as prep
+
+    #Escollim el dataset i la imatge que volem provar
+    #Per provar una altra només cal canviar aquests dos valors
+    dataset="DR2019"
+    numero=3
+
+    ruta_projecte=Path(__file__).resolve().parent.parent
+    ruta_dades=ruta_projecte/"data_samples"
+
+    #Obtenim automaticament la imatge i el seu Ground Truth
+    ruta_imatge,ruta_gt=prep.obtenir_rutes_dataset(
+        ruta_dades,dataset,numero)
+
+    #Fem el preprocessament i obtenim la mascara de retina,
+    #la imatge sense fons i els canals originals
+    imatge,mascara_gt,mascara_retina,imatge_retina,canals=prep.preprocessa_imatge(
+        ruta_imatge,ruta_gt)
+
+    #Apliquem tots els metodes de millora del Bloc 4
+    contrast=millora_contrast(
+        imatge_retina,
+        mascara_retina,
+        canals)
+
+    #Agafem els canals originals que volem comparar
     g=canals[1]
     luma=canals[3]
     v=canals[6]
-    
-    
-    luma_eq=contrast[0]
+
+    #Agafem els resultats principals que retorna la funcio millora_contrast
     luma_clahe=contrast[1]
-    
     g_clahe=contrast[2]
     v_clahe=contrast[4]
-    
     v_kmmrc=contrast[5]
     v_kmmrc_clahe=contrast[6]
-    v_kmmrc_clahe_filtrat=contrast[7]
     imatge_kmmrc=contrast[8]
-    
-    
-    plt.figure(figsize=(14,10))
 
-    plt.suptitle(titol,fontsize=16)
+    print("\n======================================")
+    print("PROVA BLOC 4")
+    print("Dataset:",dataset)
+    print("Imatge:",str(numero).zfill(3))
+    print("======================================")
 
-    plt.subplot(3,4,1)
+    #Mostrem la imatge de retina, alguns canals originals
+    #i els resultats principals de la millora de contrast
+    plt.figure(figsize=(16,8))
+    plt.suptitle(
+        "PROVA BLOC 4 - "+dataset+" "+str(numero).zfill(3),
+        fontsize=16)
+
+    plt.subplot(2,4,1)
     plt.imshow(imatge_retina)
     plt.title("Imatge retina")
     plt.axis("off")
 
-    plt.subplot(3,4,2)
+    plt.subplot(2,4,2)
     plt.imshow(imatge_kmmrc)
     plt.title("Imatge KMMRC")
     plt.axis("off")
 
-    plt.subplot(3,4,3)
+    plt.subplot(2,4,3)
     plt.imshow(g,cmap="gray")
     plt.title("G original")
     plt.axis("off")
 
-    plt.subplot(3,4,4)
+    plt.subplot(2,4,4)
     plt.imshow(g_clahe,cmap="gray")
     plt.title("G CLAHE")
     plt.axis("off")
 
-    plt.subplot(3,4,5)
+    plt.subplot(2,4,5)
     plt.imshow(luma,cmap="gray")
     plt.title("Luma original")
     plt.axis("off")
 
-    plt.subplot(3,4,6)
-    plt.imshow(luma_eq,cmap="gray")
-    plt.title("Luma equalitzada")
-    plt.axis("off")
-
-    plt.subplot(3,4,7)
+    plt.subplot(2,4,6)
     plt.imshow(luma_clahe,cmap="gray")
     plt.title("Luma CLAHE")
     plt.axis("off")
 
-    plt.subplot(3,4,8)
+    plt.subplot(2,4,7)
     plt.imshow(v,cmap="gray")
     plt.title("V original")
     plt.axis("off")
 
-    plt.subplot(3,4,9)
-    plt.imshow(v_clahe,cmap="gray")
-    plt.title("V CLAHE")
-    plt.axis("off")
-
-    plt.subplot(3,4,10)
-    plt.imshow(v_kmmrc,cmap="gray")
-    plt.title("V KMMRC")
-    plt.axis("off")
-
-    plt.subplot(3,4,11)
+    plt.subplot(2,4,8)
     plt.imshow(v_kmmrc_clahe,cmap="gray")
-    plt.title("KMMRC + CLAHE")
+    plt.title("V KMMRC + CLAHE")
     plt.axis("off")
 
-    plt.subplot(3,4,12)
-    plt.imshow(v_kmmrc_clahe_filtrat,cmap="gray")
-    plt.title("KMMRC + CLAHE + filtre")
-    plt.axis("off")
-
-    plt.tight_layout(rect=[0,0,1,0.95])
+    plt.tight_layout(rect=[0,0,1,0.92])
     plt.show()
 
+
+# Ús d'IA:
+# Hem utilitzat IA principalment per entendre millor la millora de contrast
+# amb CLAHE i el funcionament general de KMMRC.
+# L'ús ha estat sobretot com ajuda per entendre el metode i poder implementar
+# un codi funcional adaptat al nostre cas.

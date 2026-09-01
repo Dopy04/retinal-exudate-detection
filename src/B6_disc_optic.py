@@ -108,6 +108,145 @@ def elimina_disc_optic(mascara_candidats,mascara_disc):
 
     return mascara_sense_disc
 
+if __name__=="__main__":
+
+    #Prova Bloc 6: utilitzem una imatge del dataset per comprovar
+    #visualment com es detecta i s'elimina el disc optic
+
+    from pathlib import Path
+    import B2_preprocessament as prep
+    from B4_millora_contrast import millora_contrast
+    from B4_segmentacio import obtenir_mascares_baseline
+    from B5_nick_inrg import invertir_canal,segmentar_nick
+
+    #Escollim el dataset i la imatge que volem provar
+    #Per provar una altra només cal canviar aquests dos valors
+    dataset="DR2019"
+    numero=3
+
+    ruta_projecte=Path(__file__).resolve().parent.parent
+    ruta_dades=ruta_projecte/"data_samples"
+
+    #Obtenim automaticament la imatge i el seu Ground Truth
+    ruta_imatge,ruta_gt=prep.obtenir_rutes_dataset(
+        ruta_dades,dataset,numero)
+
+    #Fem el preprocessament i obtenim la mascara de retina,
+    #la imatge sense fons i els canals originals
+    imatge,mascara_gt,mascara_retina,imatge_retina,canals=prep.preprocessa_imatge(
+        ruta_imatge,ruta_gt)
+
+    #Apliquem la millora de contrast del Bloc 4
+    contrast=millora_contrast(
+        imatge_retina,
+        mascara_retina,
+        canals)
+
+    #Agafem el canal V amb CLAHE perquè és un dels canals
+    #que utilitzem després per segmentar possibles exsudats
+    canal_v_clahe=contrast[4]
+
+    #Per detectar el disc optic fem servir una combinacio de R i V,
+    #ja que el disc optic sol destacar en canals brillants
+    canal_r=canals[0]
+    canal_v=canals[6]
+    canal_disc=0.5*canal_r+0.5*canal_v
+    canal_disc=np.clip(canal_disc,0.0,1.0)
+
+    canal_suau,mascara_disc_optic,mascara_disc=detecta_disc_optic(
+        canal_disc,
+        mascara_retina,
+        percentil=98,
+        sigma=2)
+
+    #Apliquem la segmentacio basica del Bloc 4 sobre el canal V CLAHE
+    mascares=obtenir_mascares_baseline(
+        canal_v_clahe,
+        mascara_retina)
+
+    mascara_otsu=mascares["Otsu"]
+    mascara_adaptatiu=mascares["Adaptatiu"]
+
+    #Apliquem NICK del Bloc 5 sobre el mateix canal
+    #Com NICK busca regions fosques, invertim el canal abans
+    canal_invertit=invertir_canal(canal_v_clahe)
+
+    mascara_nick=segmentar_nick(
+        canal_invertit,
+        mascara_retina,
+        mida_finestra=95,
+        k=-0.2)
+
+    #Eliminem el disc optic de les mascares candidates
+    mascara_otsu_sense_disc=elimina_disc_optic(
+        mascara_otsu,
+        mascara_disc)
+
+    mascara_adaptatiu_sense_disc=elimina_disc_optic(
+        mascara_adaptatiu,
+        mascara_disc)
+
+    mascara_nick_sense_disc=elimina_disc_optic(
+        mascara_nick,
+        mascara_disc)
+
+    print("\n======================================")
+    print("PROVA BLOC 6")
+    print("Dataset:",dataset)
+    print("Imatge:",str(numero).zfill(3))
+    print("======================================")
+
+    #Mostrem el disc optic detectat i comparem algunes mascares
+    #abans i després d'eliminar aquesta zona
+    plt.figure(figsize=(16,8))
+    plt.suptitle(
+        "PROVA BLOC 6 - "+dataset+" "+str(numero).zfill(3),
+        fontsize=16)
+
+    plt.subplot(2,4,1)
+    plt.imshow(imatge)
+    plt.title("Original")
+    plt.axis("off")
+
+    plt.subplot(2,4,2)
+    plt.imshow(imatge)
+    plt.imshow(mascara_disc,cmap="Reds",alpha=0.45)
+    plt.title("Disc optic detectat")
+    plt.axis("off")
+
+    plt.subplot(2,4,3)
+    plt.imshow(mascara_otsu,cmap="gray")
+    plt.title("Otsu amb disc")
+    plt.axis("off")
+
+    plt.subplot(2,4,4)
+    plt.imshow(mascara_otsu_sense_disc,cmap="gray")
+    plt.title("Otsu sense disc")
+    plt.axis("off")
+
+    plt.subplot(2,4,5)
+    plt.imshow(mascara_adaptatiu,cmap="gray")
+    plt.title("Adaptatiu amb disc")
+    plt.axis("off")
+
+    plt.subplot(2,4,6)
+    plt.imshow(mascara_adaptatiu_sense_disc,cmap="gray")
+    plt.title("Adaptatiu sense disc")
+    plt.axis("off")
+
+    plt.subplot(2,4,7)
+    plt.imshow(mascara_nick,cmap="gray")
+    plt.title("NICK amb disc")
+    plt.axis("off")
+
+    plt.subplot(2,4,8)
+    plt.imshow(mascara_nick_sense_disc,cmap="gray")
+    plt.title("NICK sense disc")
+    plt.axis("off")
+
+    plt.tight_layout(rect=[0,0,1,0.92])
+    plt.show()
+
 
 #Comentari IA:
 # Hem utilitzat IA com a suport per entendre com aplicar l'algoritme per detectar
