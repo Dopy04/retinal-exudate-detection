@@ -42,6 +42,7 @@ from src.B10_classificador_SVM import entrena_svm,prediu_taula,reconstrueix_masc
 ruta_projecte=Path(__file__).resolve().parent
 ruta_dades=ruta_projecte/"data_samples"
 
+#si es vol provar es pot canviar el numero per provar amb altres imatges
 imatges_exemple=["DR2019_047","DR2019_008"]
 
 k_chi2=8
@@ -107,16 +108,16 @@ def finalitza_pipeline(mascara_segmentacio,canals,mascara_retina):
     eliminacio del disc optic, morfologia i Watershed.
     """
 
-    #Primer traiem el disc optic perquè podria comptar com a fals positiu
+    #Primer eliminem el disc optic perquè podria comptar com a fals positiu
     mascara_sense_disc,mascara_disc=elimina_disc(mascara_segmentacio,canals,mascara_retina)
 
     #Després netegem la mascara i eliminem regions petites
     mascara_morfologia=netejar_mascara(mascara_sense_disc,mida_minima=50,mida_forat=50)
 
-    #Amb Watershed separem regions que poden haver quedat enganxades
+    #Amb Watershed separem regions 
     etiquetes=aplicar_watershed(mascara_morfologia,distancia_minima=5)
 
-    #Tornem a tenir una mascara binaria de candidats
+
     mascara_candidats=etiquetes>0
 
     return mascara_disc,mascara_sense_disc,mascara_morfologia,etiquetes,mascara_candidats
@@ -138,7 +139,7 @@ def pipeline_paper(imatge_retina,canals,mascara_retina):
     mascara_segmentacio=segmentar_inrg(v_kmmrc,mascara_retina,mida_finestra=95,
                                        k=-0.2,iteracions=3,delta=0.1)
 
-    #Acabem el pipeline amb les etapes comunes
+    #identifiquem tot el que ens retorna la funció anterior per poder ferho servir
     mascara_disc,mascara_sense_disc,mascara_morfologia,etiquetes,mascara_candidats = finalitza_pipeline(mascara_segmentacio,canals,mascara_retina)
 
     return {"canal":v_kmmrc,"segmentacio":mascara_segmentacio,"disc":mascara_disc,
@@ -160,7 +161,7 @@ def pipeline_millor(imatge_retina,canals,mascara_retina):
     #Fem la segmentacio adaptativa sobre V CLAHE
     mascara_segmentacio=segmentar_adaptatiu(v_clahe,mascara_retina)
 
-    #Acabem el pipeline amb les mateixes etapes que el del paper
+   
     mascara_disc,mascara_sense_disc,mascara_morfologia,etiquetes,mascara_candidats = finalitza_pipeline(mascara_segmentacio,canals,mascara_retina)
 
     return {"canal":v_clahe,"segmentacio":mascara_segmentacio,"disc":mascara_disc,"sense_disc":mascara_sense_disc,
@@ -190,9 +191,7 @@ def processa_dataset(parelles):
 
     dades={}
 
-    print("\n========================================")
-    print("PROCESSANT DATASET COMPLET")
-    print("========================================")
+    print("\nProcessant dataset complet")
 
     #Processem totes les imatges una vegada i guardem els resultats
     for i,parella in enumerate(parelles):
@@ -334,9 +333,7 @@ def prova_imatges_exemple(dades):
     model_paper=entrena_model_pipeline(dades,ids_train,"taula_paper")
     model_millor=entrena_model_pipeline(dades,ids_train,"taula_millor")
 
-    print("\n========================================")
-    print("PROVA DE LES DUES IMATGES")
-    print("========================================")
+    print("\nProva de les dues imatges")
 
     for id_imatge in imatges_exemple:
         dada=dades[id_imatge]
@@ -349,9 +346,7 @@ def prova_imatges_exemple(dades):
         metriques_paper=calcular_metriques(mascara_paper,dada["gt"])
         metriques_millor=calcular_metriques(mascara_millor,dada["gt"])
 
-        print("\n----------------------------------------")
-        print("IMATGE:",id_imatge)
-        print("----------------------------------------")
+        print("\nImatge:",id_imatge)
 
         imprimir_metriques("Pipeline paper",metriques_paper)
         imprimir_metriques("Pipeline final",metriques_millor)
@@ -384,12 +379,11 @@ def imprimeix_resum_global(nom,llista):
 
     mitjana,desviacio=resum_metriques(llista)
 
-    print("\n========================================")
-    print(nom)
-    print("========================================")
+    print("\n"+nom)
 
     for clau in ["precisio","recall","f1","dice","iou","accuracy"]:
         print(clau.capitalize()+":",round(mitjana[clau],4),"+/-",round(desviacio[clau],4))
+
 
 
 def avalua_dataset_complet(dades):
@@ -406,15 +400,13 @@ def avalua_dataset_complet(dades):
     metriques_paper=[]
     metriques_millor=[]
 
-    print("\n========================================")
-    print("AVALUACIO GLOBAL - "+str(n_folds)+" FOLDS")
-    print("========================================")
+    print("\nAvaluacio global - "+str(n_folds)+" folds")
 
     for numero_fold,(index_train,index_test) in enumerate(kfold.split(ids)):
         ids_train=ids[index_train].tolist()
         ids_test=ids[index_test].tolist()
 
-        print("\nFold",numero_fold+1,"- train:",len(ids_train),"test:",len(ids_test))
+        print("Fold",numero_fold+1,"- train:",len(ids_train),"test:",len(ids_test))
 
         #Cada pipeline entrena amb les seves propies features
         model_paper=entrena_model_pipeline(dades,ids_train,"taula_paper")
@@ -430,8 +422,8 @@ def avalua_dataset_complet(dades):
             metriques_paper.append(calcular_metriques(mascara_paper,dada["gt"]))
             metriques_millor.append(calcular_metriques(mascara_millor,dada["gt"]))
 
-    imprimeix_resum_global("PIPELINE PAPER - MITJANA GLOBAL",metriques_paper)
-    imprimeix_resum_global("PIPELINE FINAL - MITJANA GLOBAL",metriques_millor)
+    imprimeix_resum_global("Pipeline paper - mitjana global",metriques_paper)
+    imprimeix_resum_global("Pipeline final - mitjana global",metriques_millor)
 
 
 #Main
@@ -441,12 +433,12 @@ if __name__=="__main__":
     #Busquem les imatges i Ground Truth disponibles
     parelles=llista_imatges_dataset()
 
-    print("Nombre total de parelles trobades:",len(parelles))
+    print("Parelles trobades:",len(parelles))
 
     #Processem totes les imatges i guardem els resultats
     dades=processa_dataset(parelles)
 
-    print("\nImatges processades correctament:",len(dades))
+    print("Imatges processades:",len(dades))
 
     #Mostrem dos exemples visuals
     prova_imatges_exemple(dades)
@@ -454,21 +446,4 @@ if __name__=="__main__":
     #Calculem la mitjana final amb validacio creuada
     avalua_dataset_complet(dades)
 
-    print("\nMain final acabat.")
-
-
-#Comentari IA:
-    
-# Hem utilitzat IA com a ajuda per ordenar millor el main final,
-# ja que en aquest fitxer ajuntem tots els blocs del projecte:
-# preprocessament, contrast, segmentacio, disc optic, morfologia,
-# Watershed, features i SVM.
-
-# A més, l'hem utilitzat per entendre millor com fer la validacio
-# amb KFold separant per imatges, per evitar que blobs d'una mateixa
-# retina apareguin tant al train com al test.
-
-#Alhora d'imprimir valors per consola i estalviarnos temps també
-#s'ha fet servir com un recurs per guanyar temps i poder deixar uns resultats 
-#clars no només a la representació gràfica que controlem més sino per 
-#representar els valors per consola d'una manera ordenada i clara
+    print("\nAcabat.")
