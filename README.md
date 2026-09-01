@@ -28,38 +28,37 @@ retina-exudates-piva/
 Els fitxers de Git no fan falta per executar el projecte, per tant no s'han de tocar.
 
 ## Blocs
-
 El projecte està separat en 10 blocs. Cada un fa una part concreta del procés.
 
 ### Bloc 1 - Mètriques
-Serveix per comparar una màscara obtinguda amb el Ground Truth. Calcula TP, FP, FN i TN i a partir d'aixo obtenim Precision, Recall, F1, Dice, IoU i Accuracy.
+Serveix per comparar una màscara obtinguda amb el Ground Truth. Calcula TP,FP, FN y TN i a partir d'aixo obtenim Precision, Recall, F1, Dice, IoU i Accuracy.
 
 ### Bloc 2 - Preprocessament
-Carrega la imatge i el Ground Truth, normalitza la imatge i genera la màscara de retina per eliminar el fons negre exterior. També extreu els diferents canals que utilitzem després.
+Carrega la imatge i el Ground Truth,normalitza la imatge i genera la màscara de retina per eliminar el fons negre exterior. També extreu els diferents canals que utilitzem després
 
 ### Bloc 3 - Millora de contrast
-En aquest bloc provem diferents mètodes de contrast com equalització d'histograma, CLAHE i KMMRC. La idea és veure si millorar el contrast ajuda realment a detectar millor els exsudats.
+En aquest bloc provem diferents mètodes de contrast com equalització d'histograma,CLAHE i KMMRC. La idea és veure si millorar el contrast ajuda realment a detectar millor els exsudats.
 
 ### Bloc 4 - Segmentació
 Aquí tenim els primers mètodes de segmentació que utilitzem per comparar resultats. Tenim Otsu, llindar fix, llindar adaptatiu, Sauvola i K-means.
 
 ### Bloc 5 - NICK i INRG
-Implementa NICK i INRG, que venen del treball de referència. Com els exsudats són zones brillants, invertim el canal abans d'aplicar el mètode.
+Implementa NICK i INRG,que venen del treball de referència.Com els exsudats són zones brillants, invertim el canal abans d'aplicar el mètode.
 
 ### Bloc 6 - Disc òptic
 Busca aproximadament la zona del disc òptic i l'elimina de la màscara. Això es fa perquè el disc òptic també és molt brillant i es pot confondre amb un exsudat.
 
 ### Bloc 7 - Postprocessament
-Aplica morfologia matemàtica per netejar una mica les màscares. S'eliminen objectes petits, es tanquen discontinuïtats i també s'eliminen forats petits dins dels blobs.
+Aplica morfologia matemàtica per netejar una mica les màscares.S'eliminen objectes petits, es tanquen discontinuïtats i també s'eliminen forats petits dins dels blobs.
 
 ### Bloc 8 - Watershed
-S'utilitza per separar blobs que han quedat connectats. No detecta exsudats nous, simplement separa regions perquè després es puguin estudiar una per una.
+S'utilitza per separar blobs que han quedat connectats.No detecta exsudats nous,simplement separa regions perquè després es puguin estudiar una per una.
 
 ### Bloc 9 - Detecció de blobs i característiques
-Agafa cada blob i calcula diferents característiques de forma, mida, intensitat i color. Després aquestes dades s'utilitzen en el classificador.
+Agafa cada blob i calcula diferents característiques de forma, mida, intensitat i color.Després aquestes dades s'utilitzen en el classificador.
 
 ### Bloc 10 - Classificador SVM
-Utilitza les característiques del bloc anterior per entrenar una SVM. L'objectiu és decidir quins blobs són exsudats reals i quins són falsos positius.
+Utilitza les característiques del bloc anterior per entrenar una SVM.L'objectiu és decidir quins blobs són exsudats reals i quins són falsos positius.
 
 ## Proves de cada bloc
 
@@ -87,7 +86,7 @@ dataset="JSIEC"
 numero=12
 ```
 
-El programa busca directament la imatge i el Ground Truth que li correspon, així no hem d'escriure les dues rutes a mà cada vegada.
+El programa busca directament la imatge i el Ground Truth que li correspon, així no hem d'escriure les dues rutes a ma cada vegada.
 
 ## Data samples
 
@@ -117,15 +116,11 @@ Exudate-DR2019-Groundtruth/003.jpg
 ```
 
 ## Main
-
 El fitxer principal és `main.py`.
 
 Aquí es connecten els diferents blocs i s'executa el projecte complet.
 
-La idea és fer dues coses principals.
-
-Primer agafarem dues imatges del dataset i passarem el pipeline del mètode de referència i el pipeline que a nosaltres ens ha funcionat millor. Això ens permet comparar visualment els dos mètodes i veure les diferències.
-
+La idea és fer dues coses principals.Primer agafarem dues imatges del dataset i passarem el pipeline del mètode de referència i el pipeline que a nosaltres ens ha funcionat millor. Això ens permet comparar visualment els dos mètodes i veure les diferències.
 Després el main recorrerà totes les imatges disponibles, calcularà les mètriques de cada resultat i al final farà una mitjana general.
 
 Per executar-ho:
@@ -135,7 +130,6 @@ python main.py
 ```
 
 ## Llibreries
-
 Les llibreries principals que utilitzem són:
 
 ```text
@@ -146,11 +140,9 @@ scikit-image
 scikit-learn
 ```
 ```bash
-pip install numpy scipy matplotlib scikit-image scikit-learn pandas
 ```
 
 ## Ús d'IA
-
 En els blocs on s'ha utilitzat IA com a suport hi ha una indicació al final del fitxer explicant per a que s'ha utilitzat.
-
-Principalment s'ha fet servir per ajudar a entendre alguns mètodes, revisar errors, comprovar parts del codi i ajudar amb la documentació.
+Principalment s'ha fet servir per ajudar a entendre alguns mètodes, revisar errors, comprovar parts del codi i ajudar amb la documentació. Alguns elements de markdown s'han fet amb ajuda de la IA, per a que la representació 
+visual sigués la adecuada.
