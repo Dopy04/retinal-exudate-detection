@@ -1,14 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Main final del projecte PIVA Retina.
+Main final del projecte.
 
-Comparem dos pipelines:
-1. Pipeline adaptat del paper: KMMRC + INRG
-2. Pipeline que ha donat millors resultats: V CLAHE + Adaptatiu
-
-Primer processem totes les imatges, després fem una validacio creuada
-per imatge amb el SVM i finalment mostrem les dues imatges que han
-obtingut millor Dice amb el pipeline final.
+Comparem el pipeline adaptat del paper amb el pipeline final i
+calculem les metriques sobre tot el dataset.
 """
 
 import numpy as np
@@ -30,32 +25,31 @@ from src.B9_deteccio_blobs import crea_taula_features
 from src.B10_classificador_SVM import entrena_svm,prediu_taula,reconstrueix_mascara_svm
 
 
-# -------------------------------------------------------------------------
-# CONFIGURACIO
-# -------------------------------------------------------------------------
+#Configuracio general
 
 ruta_projecte=Path(__file__).resolve().parent
 ruta_dades=ruta_projecte/"data_samples"
 
+#Dues imatges que utilitzarem per veure visualment els resultats
+imatges_exemple=["DR2019_047","DR2019_008"]
+
+#Configuracio general del SVM
 k_chi2=8
 llindar_positiu=0.25
 llindar_negatiu=0.05
 
-#Fem 5 particions perquè cada imatge sigui test una vegada
+#Nombre de particions que utilitzem per la validacio
 n_folds=5
 
-#Posa False si només vols calcular resultats sense obrir figures
 mostrar_figures=True
 
 
-# -------------------------------------------------------------------------
-# CARREGA DEL DATASET
-# -------------------------------------------------------------------------
+#Dataset
 
 def llista_imatges_dataset():
     """
     Busca totes les parelles imatge-Ground Truth disponibles
-    dins de DR2019 i JSIEC.
+    als datasets DR2019 i JSIEC.
     """
 
     carpetes={
@@ -93,7 +87,7 @@ def llista_imatges_dataset():
 
 
 def carrega_imatge(parella):
-    """Carrega una imatge i aplica el preprocessament inicial."""
+    """Carrega una imatge i aplica el preprocessament del bloc 2."""
 
     imatge,mascara_gt,mascara_retina,imatge_retina,canals=preprocessa_imatge(
         parella["ruta_imatge"],
@@ -103,9 +97,7 @@ def carrega_imatge(parella):
     return imatge,mascara_gt,mascara_retina,imatge_retina,canals
 
 
-# -------------------------------------------------------------------------
-# FUNCIONS COMUNES DELS PIPELINES
-# -------------------------------------------------------------------------
+#Funcions comunes dels pipelines
 
 def elimina_disc(mascara,canals,mascara_retina):
     """Detecta el disc optic amb el canal R i l'elimina de la mascara."""
@@ -129,36 +121,36 @@ def elimina_disc(mascara,canals,mascara_retina):
 
 def finalitza_pipeline(mascara_segmentacio,canals,mascara_retina):
     """
-    Etapes comunes després de la segmentacio:
-    disc optic, morfologia i Watershed.
+    Etapes comunes dels dos pipelines:
+    eliminacio del disc optic, morfologia i Watershed.
     """
 
+    #Primer eliminem el disc optic perquè també és una zona molt brillant
     mascara_sense_disc,mascara_disc=elimina_disc(
         mascara_segmentacio,
         canals,
         mascara_retina
     )
 
+    #Després netegem la mascara per eliminar regions petites i irregularitats
     mascara_morfologia=netejar_mascara(
         mascara_sense_disc,
         mida_minima=50,
         mida_forat=50
     )
 
+    #Finalment separem les regions connectades amb Watershed
     etiquetes=aplicar_watershed(
         mascara_morfologia,
         distancia_minima=5
     )
 
-    #B9 treballa amb la mascara binaria dels candidats
     mascara_candidats=etiquetes>0
 
     return mascara_disc,mascara_sense_disc,mascara_morfologia,etiquetes,mascara_candidats
 
 
-# -------------------------------------------------------------------------
-# PIPELINE DEL PAPER
-# -------------------------------------------------------------------------
+#Pipeline del paper
 
 def pipeline_paper(imatge_retina,canals,mascara_retina):
     """
@@ -172,7 +164,7 @@ def pipeline_paper(imatge_retina,canals,mascara_retina):
         canals
     )
 
-    #Posicio 5 de millora_contrast = canal V després de KMMRC
+    #Utilitzem el canal V després de KMMRC tal com hem adaptat del paper
     v_kmmrc=contrast[5]
 
     mascara_segmentacio=segmentar_inrg(
@@ -201,9 +193,7 @@ def pipeline_paper(imatge_retina,canals,mascara_retina):
     }
 
 
-# -------------------------------------------------------------------------
-# PIPELINE AMB MILLORS RESULTATS
-# -------------------------------------------------------------------------
+#Pipeline final
 
 def pipeline_millor(imatge_retina,canals,mascara_retina):
     """
@@ -217,7 +207,7 @@ def pipeline_millor(imatge_retina,canals,mascara_retina):
         canals
     )
 
-    #Posicio 4 de millora_contrast = canal V després de CLAHE
+    #Utilitzem V CLAHE perquè és la combinacio que ens ha donat millor resultat
     v_clahe=contrast[4]
 
     mascara_segmentacio=segmentar_adaptatiu(
@@ -242,13 +232,11 @@ def pipeline_millor(imatge_retina,canals,mascara_retina):
     }
 
 
-# -------------------------------------------------------------------------
-# FEATURES
-# -------------------------------------------------------------------------
+#Features
 
 def crea_features_pipeline(imatge,canals,mascara_gt,resultat,
                            id_imatge,nom_canal,nom_metode):
-    """Calcula les features dels blobs candidats."""
+    """Calcula les features dels blobs candidats abans de passar-los al SVM."""
 
     taula=crea_taula_features(
         imatge,
@@ -265,14 +253,12 @@ def crea_features_pipeline(imatge,canals,mascara_gt,resultat,
     return taula
 
 
-# -------------------------------------------------------------------------
-# PROCESSAR TOT EL DATASET
-# -------------------------------------------------------------------------
+#Processament del dataset
 
 def processa_dataset(parelles):
     """
     Processa totes les imatges pels dos pipelines fins arribar
-    a les features que utilitzara el SVM.
+    a les features utilitzades pel SVM.
     """
 
     dades={}
@@ -340,12 +326,10 @@ def processa_dataset(parelles):
     return dades
 
 
-# -------------------------------------------------------------------------
-# SVM
-# -------------------------------------------------------------------------
+#Svm
 
 def ajunta_taules_ids(dades,ids,nom_taula):
-    """Junta les taules de features de les imatges indicades."""
+    """Junta les features de les imatges que utilitzarem per entrenar."""
 
     taules=[]
 
@@ -366,7 +350,7 @@ def ajunta_taules_ids(dades,ids,nom_taula):
 
 
 def entrena_model_pipeline(dades,ids_train,nom_taula):
-    """Entrena un SVM només amb les imatges del grup de train."""
+    """Entrena el SVM només amb les imatges que formen part del train."""
 
     taula_train=ajunta_taules_ids(
         dades,
@@ -386,14 +370,13 @@ def entrena_model_pipeline(dades,ids_train,nom_taula):
 
 
 def aplica_svm_imatge(dada,nom_pipeline,nom_taula,model_svm):
-    """Aplica el SVM sobre els candidats d'una imatge de test."""
+    """Aplica el SVM als blobs candidats d'una imatge de test."""
 
     escalador,selector,model=model_svm
 
     taula=dada[nom_taula]
     resultat=dada[nom_pipeline]
 
-    #Si no hi ha cap candidat el resultat final es una mascara buida
     if len(taula)==0:
         return np.zeros_like(dada["gt"],dtype=bool)
 
@@ -412,12 +395,10 @@ def aplica_svm_imatge(dada,nom_pipeline,nom_taula,model_svm):
     return mascara_final
 
 
-# -------------------------------------------------------------------------
-# VISUALITZACIO
-# -------------------------------------------------------------------------
+#Visualitzacio
 
 def mostra_pipeline(dada,mascara_final,nom_pipeline):
-    """Mostra tots els passos d'un pipeline per una imatge."""
+    """Mostra tots els passos d'un pipeline."""
 
     if not mostrar_figures:
         return
@@ -428,7 +409,7 @@ def mostra_pipeline(dada,mascara_final,nom_pipeline):
         titol_segmentacio="INRG"
 
     else:
-        titol="PIPELINE MILLOR - V CLAHE + ADAPTATIU"
+        titol="PIPELINE FINAL - V CLAHE + ADAPTATIU"
         titol_canal="V CLAHE"
         titol_segmentacio="Adaptatiu"
 
@@ -492,9 +473,96 @@ def mostra_pipeline(dada,mascara_final,nom_pipeline):
     plt.show()
 
 
-# -------------------------------------------------------------------------
-# METRIQUES GLOBALS
-# -------------------------------------------------------------------------
+#Prova de les dues imatges
+
+def prova_imatges_exemple(dades):
+    """
+    Entrena els dos SVM sense utilitzar les dues imatges d'exemple
+    i després mostra els dos pipelines sobre cadascuna.
+    """
+
+    ids_totals=list(dades.keys())
+
+    #Les dues imatges que mostrem no es fan servir per entrenar aquesta prova
+    ids_train=[id_imatge for id_imatge in ids_totals
+               if id_imatge not in imatges_exemple]
+
+    model_paper=entrena_model_pipeline(
+        dades,
+        ids_train,
+        "taula_paper"
+    )
+
+    model_millor=entrena_model_pipeline(
+        dades,
+        ids_train,
+        "taula_millor"
+    )
+
+    print("\n========================================")
+    print("PROVA DE LES DUES IMATGES")
+    print("========================================")
+
+    for id_imatge in imatges_exemple:
+
+        if id_imatge not in dades:
+            print("No s'ha trobat:",id_imatge)
+            continue
+
+        dada=dades[id_imatge]
+
+        mascara_paper=aplica_svm_imatge(
+            dada,
+            "paper",
+            "taula_paper",
+            model_paper
+        )
+
+        mascara_millor=aplica_svm_imatge(
+            dada,
+            "millor",
+            "taula_millor",
+            model_millor
+        )
+
+        metriques_paper=calcular_metriques(
+            mascara_paper,
+            dada["gt"]
+        )
+
+        metriques_millor=calcular_metriques(
+            mascara_millor,
+            dada["gt"]
+        )
+
+        print("\n----------------------------------------")
+        print("IMATGE:",id_imatge)
+        print("----------------------------------------")
+
+        imprimir_metriques(
+            "Pipeline paper",
+            metriques_paper
+        )
+
+        imprimir_metriques(
+            "Pipeline final",
+            metriques_millor
+        )
+
+        mostra_pipeline(
+            dada,
+            mascara_paper,
+            "paper"
+        )
+
+        mostra_pipeline(
+            dada,
+            mascara_millor,
+            "millor"
+        )
+
+
+#Metriques globals
 
 def resum_metriques(llista):
     """Calcula la mitjana i la desviacio de cada metrica."""
@@ -515,7 +583,7 @@ def resum_metriques(llista):
 
 
 def imprimeix_resum_global(nom,llista):
-    """Imprimeix les metriques globals en format mitjana +/- desviacio."""
+    """Mostra les metriques globals com mitjana +/- desviacio."""
 
     mitjana,desviacio=resum_metriques(llista)
 
@@ -533,17 +601,10 @@ def imprimeix_resum_global(nom,llista):
         )
 
 
-# -------------------------------------------------------------------------
-# AVALUACIO DE TOT EL DATASET
-# -------------------------------------------------------------------------
-
 def avalua_dataset_complet(dades):
     """
-    Avalua els dos pipelines amb validacio creuada per imatge.
-
-    Cada imatge queda com a test una vegada. Al final busquem les
-    dues imatges amb millor Dice del pipeline final i mostrem els
-    dos pipelines complets sobre aquestes mateixes imatges.
+    Avalua els dos pipelines sobre tot el dataset amb 5-fold
+    cross-validation separant sempre train i test per imatge.
     """
 
     ids=np.array(sorted(dades.keys()))
@@ -553,6 +614,8 @@ def avalua_dataset_complet(dades):
             "No hi ha prou imatges per fer "+str(n_folds)+" folds"
         )
 
+    #Fem la separacio per imatge per evitar tenir blobs de la mateixa retina
+    #al train i al test
     kfold=KFold(
         n_splits=n_folds,
         shuffle=True,
@@ -561,8 +624,6 @@ def avalua_dataset_complet(dades):
 
     metriques_paper=[]
     metriques_millor=[]
-
-    resultats={}
 
     print("\n========================================")
     print("AVALUACIO GLOBAL - "+str(n_folds)+" FOLDS")
@@ -582,6 +643,7 @@ def avalua_dataset_complet(dades):
             len(ids_test)
         )
 
+        #Cada pipeline entrena el seu propi SVM amb les seves regions candidates
         model_paper=entrena_model_pipeline(
             dades,
             ids_train,
@@ -612,136 +674,32 @@ def avalua_dataset_complet(dades):
                 model_millor
             )
 
-            metriques_imatge_paper=calcular_metriques(
-                mascara_paper,
-                dada["gt"]
-            )
-
-            metriques_imatge_millor=calcular_metriques(
-                mascara_millor,
-                dada["gt"]
-            )
-
             metriques_paper.append(
-                metriques_imatge_paper
+                calcular_metriques(
+                    mascara_paper,
+                    dada["gt"]
+                )
             )
 
             metriques_millor.append(
-                metriques_imatge_millor
+                calcular_metriques(
+                    mascara_millor,
+                    dada["gt"]
+                )
             )
 
-            #Guardem el resultat de cada imatge perquè després podem
-            #ordenar-les sense tornar a entrenar el SVM
-            resultats[id_imatge]={
-                "metriques_paper":metriques_imatge_paper,
-                "metriques_millor":metriques_imatge_millor,
-                "mascara_paper":mascara_paper,
-                "mascara_millor":mascara_millor
-            }
-
-    #Resultats mitjans de tot el dataset
     imprimeix_resum_global(
         "PIPELINE PAPER - MITJANA GLOBAL",
         metriques_paper
     )
 
     imprimeix_resum_global(
-        "PIPELINE MILLOR - MITJANA GLOBAL",
+        "PIPELINE FINAL - MITJANA GLOBAL",
         metriques_millor
     )
 
-    #Ordenem les imatges segons el Dice del pipeline final
-    ranking=sorted(
-        resultats.keys(),
-        key=lambda id_imatge:resultats[id_imatge]["metriques_millor"]["dice"],
-        reverse=True
-    )
 
-    millors=ranking[:2]
-
-    print("\n========================================")
-    print("TOP 2 IMATGES - PIPELINE MILLOR")
-    print("========================================")
-
-    for i,id_imatge in enumerate(millors):
-
-        m=resultats[id_imatge]["metriques_millor"]
-
-        print(
-            str(i+1)+".",
-            id_imatge,
-            "| Precision:",round(m["precisio"],4),
-            "| Recall:",round(m["recall"],4),
-            "| Dice:",round(m["dice"],4),
-            "| IoU:",round(m["iou"],4)
-        )
-
-    #També mostrem les millors del pipeline paper com a referencia
-    ranking_paper=sorted(
-        resultats.keys(),
-        key=lambda id_imatge:resultats[id_imatge]["metriques_paper"]["dice"],
-        reverse=True
-    )
-
-    print("\n========================================")
-    print("TOP 2 IMATGES - PIPELINE PAPER")
-    print("========================================")
-
-    for i,id_imatge in enumerate(ranking_paper[:2]):
-
-        m=resultats[id_imatge]["metriques_paper"]
-
-        print(
-            str(i+1)+".",
-            id_imatge,
-            "| Precision:",round(m["precisio"],4),
-            "| Recall:",round(m["recall"],4),
-            "| Dice:",round(m["dice"],4),
-            "| IoU:",round(m["iou"],4)
-        )
-
-    #Per les dues millors imatges del pipeline final mostrem
-    #els dos pipelines. En total obtenim quatre figures.
-    print("\n========================================")
-    print("FIGURES DE LES 2 MILLORS IMATGES")
-    print("========================================")
-
-    for id_imatge in millors:
-
-        dada=dades[id_imatge]
-
-        print("\n----------------------------------------")
-        print("IMATGE:",id_imatge)
-        print("----------------------------------------")
-
-        imprimir_metriques(
-            "Pipeline paper",
-            resultats[id_imatge]["metriques_paper"]
-        )
-
-        imprimir_metriques(
-            "Pipeline millor",
-            resultats[id_imatge]["metriques_millor"]
-        )
-
-        mostra_pipeline(
-            dada,
-            resultats[id_imatge]["mascara_paper"],
-            "paper"
-        )
-
-        mostra_pipeline(
-            dada,
-            resultats[id_imatge]["mascara_millor"],
-            "millor"
-        )
-
-    return millors,resultats
-
-
-# -------------------------------------------------------------------------
-# MAIN
-# -------------------------------------------------------------------------
+#Main
 
 if __name__=="__main__":
 
@@ -754,7 +712,7 @@ if __name__=="__main__":
             "No s'han trobat imatges amb Ground Truth"
         )
 
-    #Processem totes les imatges pels dos pipelines
+    #Processem totes les imatges una sola vegada i guardem els resultats
     dades=processa_dataset(parelles)
 
     print("\nImatges processades correctament:",len(dades))
@@ -764,15 +722,10 @@ if __name__=="__main__":
             "No hi ha prou imatges processades per fer la validacio"
         )
 
-    #Fem l'avaluacio global i busquem automaticament
-    #les dues imatges amb millor resultat
-    millors,resultats=avalua_dataset_complet(dades)
+    #Mostrem les dues imatges de prova passant pels dos pipelines
+    prova_imatges_exemple(dades)
 
-    print("\n========================================")
-    print("IMATGES RECOMANADES PER LES FIGURES")
-    print("========================================")
-
-    for id_imatge in millors:
-        print(id_imatge)
+    #Calculem les metriques finals utilitzant tot el dataset
+    avalua_dataset_complet(dades)
 
     print("\nMain final acabat.")
