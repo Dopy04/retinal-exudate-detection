@@ -138,6 +138,7 @@ SciPy
 Matplotlib
 scikit-image
 scikit-learn
+panda
 ```
 ```bash
 ```
