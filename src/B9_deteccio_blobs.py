@@ -221,248 +221,154 @@ def extreu_features_blob(regio,etiquetes,canals,y,l_norm,bstar,mascara_gt,
     solapament=calcula_solapament(mascara_blob,mascara_gt) 
     etiqueta=calcula_etiqueta(solapament,llindar_positiu,llindar_negatiu)
 
-    fila = [
-        nom_imatge,
-        nom_canal,
-        nom_metode,
-        regio.label,
+        # Guardem totes les caracteristiques calculades del blob en una fila
+    fila=[nom_imatge,nom_canal,nom_metode,regio.label]
 
-        area,
-        perimetre,
-        circularitat,
-        solidesa,
-        eccentricitat,
-        extent,
-        eix_major,
-        eix_minor,
-        ratio_eixos,
+    fila.extend([area,perimetre,circularitat,solidesa,eccentricitat,
+                 extent,eix_major,eix_minor,ratio_eixos])
 
-        mean_g,
-        std_g,
-        mean_b,
-        std_b,
-        mean_y,
-        std_y,
-        mean_gray,
-        std_gray,
-        mean_l,
-        std_l,
-        mean_bstar,
-        std_bstar,
+    fila.extend([mean_g,std_g,mean_b,std_b,mean_y,std_y,
+                 mean_gray,std_gray,mean_l,std_l,mean_bstar,std_bstar])
 
-        q25_g,
-        q75_g,
-        top25_g,
-        q25_b,
-        q75_b,
-        top25_b,
+    fila.extend([q25_g,q75_g,top25_g,q25_b,q75_b,top25_b])
 
-        solapament,
-        etiqueta,
-    ]
+    # Al final guardem el solapament amb el Ground Truth i
+    # l'etiqueta que utilitzarem posteriorment per entrenar el SVM
+    fila.extend([solapament,etiqueta])
 
     return fila
 
 
 # -------------------------------------------------------------------------
-# 3. Funcio principal del bloc 10
+# Funcio principal del Bloc 10
 # -------------------------------------------------------------------------
 
-def crea_taula_features(
-    imatge,
-    canals,
-    mascara_candidats,
-    mascara_gt,
-    nom_imatge="",
-    nom_canal="",
-    nom_metode="",
-    llindar_positiu=0.30,
-    llindar_negatiu=0.05,
-):
+def crea_taula_features(imatge,canals,mascara_candidats,mascara_gt,
+                        nom_imatge="",nom_canal="",nom_metode="",
+                        llindar_positiu=0.30,llindar_negatiu=0.05):
     """
-    Crea una taula de features.
+    Creem una taula amb les features de tots els blobs detectats.
 
-    Cada component connectada de la mascara candidata es un blob.
+    Cada fila de la taula correspon a un blob diferent.
     """
 
-    mascara_candidats = mascara_candidats.astype(bool)
-    mascara_gt = mascara_gt.astype(bool)
+    mascara_candidats=mascara_candidats.astype(bool)
+    mascara_gt=mascara_gt.astype(bool)
 
-   
-    # Canals que utilitzarem per les features.
-    # Les features es calculen sobre la imatge original/preprocessada,
-    # no sobre KMMRC ni CLAHE.
-    l_lab = canals[7]
-    b_lab = canals[9]
+    # Agafem els canals que necessitem per calcular algunes
+    # de les caracteristiques de color.
+    l_lab=canals[7]
+    b_lab=canals[9]
 
-    y = calcula_y(imatge)
-    l_norm = normalitza_l(l_lab)
-    bstar = normalitza_bstar(b_lab)
+    y=calcula_y(imatge)
+    l_norm=normalitza_l(l_lab)
+    bstar=normalitza_bstar(b_lab)
 
-    # Convertim la mascara binaria en components connectades.
-    # connectivity=2 vol dir que les diagonals tambe compten com connexio.
-    #(Connectivity = 1 només comptaria dalt baix esquerra i dreta com connexions)
-    
-    etiquetes = label(
-        mascara_candidats,
-        connectivity=2,
-    )
+    # Separem la mascara candidata en diferents blobs.
+    # Amb connectivity=2 considerem connectats també els pixels
+    # que es toquen diagonalment.
+    etiquetes=label(mascara_candidats,connectivity=2)
+    regions=regionprops(etiquetes)
 
-    regions = regionprops(etiquetes)
+    # Noms de les caracteristiques que tindrà cada columna de la taula.
+    columnes=[
+        "nom_imatge","nom_canal","nom_metode","blob_id",
 
-    columnes = [
-        "nom_imatge",
-        "nom_canal",
-        "nom_metode",
-        "blob_id",
+        "area","perimetre","circularitat","solidesa","eccentricitat",
+        "extent","eix_major","eix_minor","ratio_eixos",
 
-        "area",
-        "perimetre",
-        "circularitat",
-        "solidesa",
-        "eccentricitat",
-        "extent",
-        "eix_major",
-        "eix_minor",
-        "ratio_eixos",
+        "mean_g","std_g","mean_b","std_b","mean_y","std_y",
+        "mean_gray","std_gray","mean_l","std_l","mean_bstar","std_bstar",
 
-        "mean_g",
-        "std_g",
-        "mean_b",
-        "std_b",
-        "mean_y",
-        "std_y",
-        "mean_gray",
-        "std_gray",
-        "mean_l",
-        "std_l",
-        "mean_bstar",
-        "std_bstar",
+        "q25_g","q75_g","top25_g","q25_b","q75_b","top25_b",
 
-        "q25_g",
-        "q75_g",
-        "top25_g",
-        "q25_b",
-        "q75_b",
-        "top25_b",
-
-        "solapament_gt",
-        "etiqueta",
+        "solapament_gt","etiqueta"
     ]
 
-    files = []
+    files=[]
 
+    # Recorrem tots els blobs i calculem una fila de features
+    # per cadascun d'ells.
     for regio in regions:
-
-        fila = extreu_features_blob(
-            regio,
-            etiquetes,
-            canals,
-            y,
-            l_norm,
-            bstar,
-            mascara_gt,
-            nom_imatge,
-            nom_canal,
-            nom_metode,
-            llindar_positiu,
-            llindar_negatiu,
-        )
+        fila=extreu_features_blob(regio,etiquetes,canals,y,l_norm,bstar,
+                                  mascara_gt,nom_imatge,nom_canal,nom_metode,
+                                  llindar_positiu,llindar_negatiu)
 
         files.append(fila)
 
-    taula = pd.DataFrame(
-        files,
-        columns=columnes,
-    )
+    # Amb totes les files construim finalment la taula de features.
+    taula=pd.DataFrame(files,columns=columnes)
 
     return taula
 
 
-# -------------------------------------------------------------------------
-# 4. Resum
-# -------------------------------------------------------------------------
 
-def imprimeix_resum_features(taula, nom=""):
+# Resum de les features
+
+
+def imprimeix_resum_features(taula,nom=""):
     """
-    Imprimeix un resum curt de les features.
+    Mostrem un resum dels blobs que hem obtingut.
     """
 
-    print("\n====================================")
-    print("RESUM FEATURES:", nom)
-    print("====================================")
+ 
+    print("RESUM FEATURES:",nom)
 
-    print("Nombre de blobs:", len(taula))
 
-    if len(taula) == 0:
+    print("Nombre de blobs:",len(taula))
+
+    if len(taula)==0:
         return
 
-    print("Positius:", np.sum(taula["etiqueta"] == 1))
-    print("Negatius:", np.sum(taula["etiqueta"] == 0))
-    print("Ambigus:", np.sum(taula["etiqueta"] == -1))
+    print("Positius:",np.sum(taula["etiqueta"]==1))
+    print("Negatius:",np.sum(taula["etiqueta"]==0))
+    print("Ambigus:",np.sum(taula["etiqueta"]==-1))
 
-    print("Area mitjana:", round(np.mean(taula["area"]), 3))
-    print("Solapament mitja:", round(np.mean(taula["solapament_gt"]), 3))
-    print("Mean G mitja:", round(np.mean(taula["mean_g"]), 3))
-    print("Mean B mitja:", round(np.mean(taula["mean_b"]), 3))
+    print("Area mitjana:",round(np.mean(taula["area"]),3))
+    print("Solapament mitja:",round(np.mean(taula["solapament_gt"]),3))
+    print("Mean G mitja:",round(np.mean(taula["mean_g"]),3))
+    print("Mean B mitja:",round(np.mean(taula["mean_b"]),3))
 
 
 def ajunta_taules(llista_taules):
     """
-    Junta diferents taules de features.
+    Ajuntem les taules de features de diferents imatges
+    en una única taula.
     """
 
-    taula_total = pd.concat(
-        llista_taules,
-        ignore_index=True,
-    )
+    taula_total=pd.concat(llista_taules,ignore_index=True)
 
     return taula_total
 
 
 def columnes_svm():
     """
-    Columnes que podrem usar com X en el bloc 11.
+    Indiquem les features que utilitzarem com entrada del SVM.
 
-    No posem:
-        - nom_imatge
-        - nom_canal
-        - nom_metode
-        - blob_id
-        - solapament_gt
-        - etiqueta
+    No utilitzem el nom de la imatge, metode o blob perquè només
+    serveixen per identificar-lo. Tampoc utilitzem el solapament
+    ni l'etiqueta, ja que aquests valors provenen del Ground Truth.
     """
 
-    columnes = [
-        "area",
-        "perimetre",
-        "circularitat",
-        "solidesa",
-        "eccentricitat",
-        "extent",
-        "eix_major",
-        "eix_minor",
-        "ratio_eixos",
+    columnes=["area","perimetre","circularitat","solidesa","eccentricitat",
+        "extent","eix_major","eix_minor","ratio_eixos",
 
-        "mean_g",
-        "std_g",
-        "mean_b",
-        "std_b",
-        "mean_y",
-        "std_y",
-        "mean_gray",
-        "std_gray",
-        "mean_l",
-        "std_l",
-        "mean_bstar",
-        "std_bstar",
+        "mean_g","std_g","mean_b","std_b","mean_y","std_y",
+        "mean_gray","std_gray","mean_l","std_l","mean_bstar","std_bstar",
 
-        "q25_g",
-        "q75_g",
-        "top25_g",
-        "q25_b",
-        "q75_b",
-        "top25_b",
-    ]
+        "q25_g","q75_g","top25_g","q25_b","q75_b","top25_b"]
 
     return columnes
+    
+# Comentari IA:
+# Hem utilitzat IA com a suport per organitzar aquesta part del projecte,
+# ja que treballem amb una gran quantitat d'informacio per cada blob:
+# features de forma, color, intensitat, etiquetes i dades de diferents canals.
+#
+# L'hem fet servir especialment per entendre com estructurar aquestes dades
+# en taules, mantenir el mateix ordre entre files i columnes i assegurar que
+# cada feature correspon al canal i al blob correcte durant tot el proces.
+#
+# També ens ha servit de guia per connectar aquesta taula de features amb
+# els blocs posteriors, especialment amb el SVM i la reconstruccio de les
+# mascares a partir dels blobs classificats.
