@@ -1,3 +1,26 @@
+# Retinal Exudate Segmentation — Image Analysis
+
+**University team project · Python · Image processing · Segmentation · Feature extraction · Exploratory SVM**
+
+A modular research-oriented image-processing pipeline for detecting bright exudate-like regions in retinal fundus images. The repository explores preprocessing, contrast enhancement, thresholding, optic-disc masking, morphological processing, watershed separation, blob features and exploratory SVM classification.
+
+**Status:** Academic development project. No clinical validation or independently verified overall performance metric is claimed here.
+
+## Project navigation
+
+- [Main pipeline](main.py)
+- [Processing modules](src/)
+- [Sample images and masks](data_samples/)
+- [Configuration](config.py)
+
+The code considers precision, recall, F1, Dice, IoU and accuracy relative to reference segmentation masks. Aggregate numerical results are intentionally not claimed without a documented evaluation run and dataset split.
+
+The detailed module descriptions and usage instructions below are maintained in their original Catalan.
+
+---
+
+## Documentació original en català
+
 # Segmentació d'exsudats en imatges de retina
 
 Aquest projecte busca detectar i segmentar exsudats en imatges de retina utilitzant diferents tècniques de processament d'imatge.
